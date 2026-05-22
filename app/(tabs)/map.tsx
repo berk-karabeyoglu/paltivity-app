@@ -166,13 +166,24 @@ export default function MapScreen() {
     ;(async () => {
       const { status } = await Location.requestForegroundPermissionsAsync()
       if (status !== 'granted') { setLocationReady(true); return }
-      const location = await Location.getCurrentPositionAsync({})
-      const { latitude, longitude } = location.coords
-      userCoords.current = { latitude, longitude }
-      setRegion({ latitude, longitude, latitudeDelta: 0.05, longitudeDelta: 0.05 })
-      setLocationReady(true)
-      if (user) {
-        await supabase.from('profiles').update({ last_lat: latitude, last_lng: longitude }).eq('id', user.id)
+      try {
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 5000)
+        )
+        const location = await Promise.race([
+          Location.getCurrentPositionAsync({}),
+          timeout,
+        ])
+        const { latitude, longitude } = location.coords
+        userCoords.current = { latitude, longitude }
+        setRegion({ latitude, longitude, latitudeDelta: 0.05, longitudeDelta: 0.05 })
+        if (user) {
+          await supabase.from('profiles').update({ last_lat: latitude, last_lng: longitude }).eq('id', user.id)
+        }
+      } catch {
+        // Konum alınamadı veya timeout (emülatör) — varsayılan bölgede aç
+      } finally {
+        setLocationReady(true)
       }
     })()
   }, [user])

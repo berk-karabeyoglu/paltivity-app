@@ -25,14 +25,7 @@ function RootLayoutInner() {
   useEffect(() => {
     if (Platform.OS !== 'android') return
     NavigationBar.setVisibilityAsync('hidden')
-    NavigationBar.setBehaviorAsync('overlay-swipe')
   }, [])
-
-  useEffect(() => {
-    if (Platform.OS !== 'android') return
-    NavigationBar.setBackgroundColorAsync(colors.background)
-    NavigationBar.setButtonStyleAsync(theme === 'dark' ? 'light' : 'dark')
-  }, [theme, colors.background])
 
   const refresh = useCallback(async () => {
     if (!session?.user) return
