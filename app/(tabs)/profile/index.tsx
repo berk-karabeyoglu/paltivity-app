@@ -116,6 +116,20 @@ function createStyles(c: ColorTheme) {
   })
 }
 
+function sortEvents(events: EventItem[]) {
+  const now = Date.now()
+  const isActive = (e: EventItem) =>
+    e.status !== 'cancelled' &&
+    new Date(e.starts_at).getTime() >= now - 3 * 60 * 60 * 1000
+  return [...events].sort((a, b) => {
+    const aA = isActive(a), bA = isActive(b)
+    if (aA && !bA) return -1
+    if (!aA && bA) return 1
+    if (aA && bA) return new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+    return new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime()
+  })
+}
+
 export default function ProfileScreen() {
   const { user } = useAuth()
   const colors = useColors()
@@ -151,9 +165,9 @@ export default function ProfileScreen() {
           ])
           if (active) {
             setProfile(profileData)
-            setCreatedEvents(createdData ?? [])
+            setCreatedEvents(sortEvents(createdData ?? []))
             setJoinedEvents(
-              (joinedData ?? []).map((a: any) => a.event).filter(Boolean)
+              sortEvents((joinedData ?? []).map((a: any) => a.event).filter(Boolean))
             )
           }
         } catch (err: any) {
@@ -279,21 +293,23 @@ export default function ProfileScreen() {
               </View>
               <View style={[
                 styles.statusBadge,
-                event.status === 'active' && styles.statusActive,
+                event.status === 'active' && new Date(event.starts_at).getTime() >= Date.now() - 3 * 60 * 60 * 1000 && styles.statusActive,
                 event.status === 'cancelled' && styles.statusCancelled,
               ]}>
-                <Text style={[styles.statusText, event.status === 'active' && styles.statusTextActive]}>
-                  {event.status === 'active' ? 'Aktif' : event.status === 'cancelled' ? 'İptal' : 'Bitti'}
+                <Text style={[styles.statusText, event.status === 'active' && new Date(event.starts_at).getTime() >= Date.now() - 3 * 60 * 60 * 1000 && styles.statusTextActive]}>
+                  {event.status === 'cancelled' ? 'İptal' : new Date(event.starts_at).getTime() < Date.now() - 3 * 60 * 60 * 1000 ? 'Bitti' : 'Aktif'}
                 </Text>
               </View>
               {activeTab === 'created' && (
                 <View style={styles.cardActions}>
-                  <TouchableOpacity
-                    style={styles.editButton}
-                    onPress={(e) => { e.stopPropagation(); router.push(`/event/edit/${event.id}`) }}
-                  >
-                    <Ionicons name="pencil-outline" size={15} color={colors.textSecondary} />
-                  </TouchableOpacity>
+                  {new Date(event.starts_at).getTime() >= Date.now() - 3 * 60 * 60 * 1000 && event.status === 'active' && (
+                    <TouchableOpacity
+                      style={styles.editButton}
+                      onPress={(e) => { e.stopPropagation(); router.push(`/event/edit/${event.id}`) }}
+                    >
+                      <Ionicons name="pencil-outline" size={15} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     style={styles.deleteButton}
                     onPress={(e) => { e.stopPropagation(); handleDelete(event) }}

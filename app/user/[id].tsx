@@ -130,6 +130,20 @@ function createStyles(c: ColorTheme) {
   })
 }
 
+function sortEvents(events: EventItem[]) {
+  const now = Date.now()
+  const isActive = (e: EventItem) =>
+    e.status !== 'cancelled' &&
+    new Date(e.starts_at).getTime() >= now - 3 * 60 * 60 * 1000
+  return [...events].sort((a, b) => {
+    const aA = isActive(a), bA = isActive(b)
+    if (aA && !bA) return -1
+    if (!aA && bA) return 1
+    if (aA && bA) return new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+    return new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime()
+  })
+}
+
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const colors = useColors()
@@ -172,8 +186,8 @@ export default function UserProfileScreen() {
         ])
         if (error) { setNotFound(true); return }
         setProfile(profileData)
-        setCreatedEvents(createdData ?? [])
-        setJoinedEvents((joinedData ?? []).map((a: any) => a.event).filter(Boolean))
+        setCreatedEvents(sortEvents(createdData ?? []))
+        setJoinedEvents(sortEvents((joinedData ?? []).map((a: any) => a.event).filter(Boolean)))
       } finally {
         setLoading(false)
       }
@@ -314,11 +328,11 @@ export default function UserProfileScreen() {
                 </View>
                 <View style={[
                   styles.statusBadge,
-                  event.status === 'active' && styles.statusActive,
+                  event.status === 'active' && new Date(event.starts_at).getTime() >= Date.now() - 3 * 60 * 60 * 1000 && styles.statusActive,
                   event.status === 'cancelled' && styles.statusCancelled,
                 ]}>
-                  <Text style={[styles.statusText, event.status === 'active' && styles.statusTextActive]}>
-                    {event.status === 'active' ? 'Aktif' : event.status === 'cancelled' ? 'İptal' : 'Bitti'}
+                  <Text style={[styles.statusText, event.status === 'active' && new Date(event.starts_at).getTime() >= Date.now() - 3 * 60 * 60 * 1000 && styles.statusTextActive]}>
+                    {event.status === 'cancelled' ? 'İptal' : new Date(event.starts_at).getTime() < Date.now() - 3 * 60 * 60 * 1000 ? 'Bitti' : 'Aktif'}
                   </Text>
                 </View>
               </TouchableOpacity>

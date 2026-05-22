@@ -1,10 +1,11 @@
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, ActivityIndicator, Alert,
   Animated, Easing, Modal, FlatList, Image,
 } from 'react-native'
-import { useLocalSearchParams, router } from 'expo-router'
+import { useLocalSearchParams, router, useFocusEffect } from 'expo-router'
+import { consumeEventRefresh } from '../../lib/eventRefreshSignal'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/hooks/useAuth'
@@ -33,8 +34,14 @@ function createStyles(c: ColorTheme) {
     container: { flex: 1, backgroundColor: c.background },
     loading: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: c.background },
     content: { padding: 24, paddingBottom: 120 },
-    back: { flexDirection: 'row', alignItems: 'center', marginTop: 56, marginBottom: 28, gap: 4 },
+    back: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 56, marginBottom: 28 },
+    backLeft: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     backText: { color: c.accent, fontSize: 16 },
+    editBtn: {
+      width: 36, height: 36, borderRadius: 10,
+      backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
+      alignItems: 'center', justifyContent: 'center',
+    },
     title: { fontSize: 26, fontWeight: '800', color: c.textPrimary, marginBottom: 20, letterSpacing: -0.5 },
     metaCard: {
       backgroundColor: c.surface, borderRadius: 16,
@@ -87,6 +94,13 @@ function createStyles(c: ColorTheme) {
       borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12,
     },
     notFoundBtnText: { color: c.accent, fontWeight: '600', fontSize: 15 },
+    endedBanner: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      backgroundColor: c.surface,
+      borderWidth: 1, borderColor: c.border,
+      borderRadius: 14, padding: 16,
+    },
+    endedText: { flex: 1, color: c.textSecondary, fontSize: 14, fontWeight: '600' },
     modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
     modalSheet: {
       backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
@@ -143,12 +157,8 @@ export default function EventDetailScreen() {
   const [attendeesLoading, setAttendeesLoading] = useState(false)
   const { particles, fire } = useConfetti()
 
-  // K3: Unmount guard — hızlı navigate'de setState çağrısını önler
-  useEffect(() => {
-    if (!user) return
-    let mounted = true
-
-    const fetchEvent = async () => {
+  const fetchEvent = useCallback(async (mounted: { current: boolean }) => {
+      if (!user) return
       setLoading(true)
       try {
         const { data, error } = await supabase
@@ -171,25 +181,37 @@ export default function EventDetailScreen() {
           .eq('user_id', user.id)
           .maybeSingle()
 
-        if (!mounted) return
+        if (!mounted.current) return
         setEvent({
           ...data,
           attendee_count: attendeeCount ?? 0,
           is_attending: myAttendance?.status === 'joined',
         })
       } catch (err: any) {
-        if (!mounted) return
+        if (!mounted.current) return
         if (!err.message?.includes('JSON') && !err.code?.includes('PGRST116')) {
           Alert.alert('Hata', err.message)
         }
       } finally {
-        if (mounted) setLoading(false)
+        if (mounted.current) setLoading(false)
       }
-    }
-
-    fetchEvent()
-    return () => { mounted = false }
   }, [id, user])
+
+  // İlk yükleme
+  useEffect(() => {
+      const mounted = { current: true }
+      fetchEvent(mounted)
+      return () => { mounted.current = false }
+  }, [fetchEvent])
+
+  // Edit'ten dönünce refresh sinyali varsa yenile
+  useFocusEffect(useCallback(() => {
+      if (!consumeEventRefresh()) return
+      const mounted = { current: true }
+      fetchEvent(mounted)
+      return () => { mounted.current = false }
+  }, [fetchEvent]))
+
 
   const handleJoin = async () => {
     if (!event || joinPhase !== 'idle' || !user) return
@@ -298,6 +320,8 @@ export default function EventDetailScreen() {
 
   const isCreator = event.creator_id === user?.id
   const isFull = event.max_attendees !== null && event.attendee_count >= event.max_attendees
+  const isEnded = event.status !== 'active' ||
+    new Date(event.starts_at).getTime() < Date.now() - 3 * 60 * 60 * 1000
   const formattedDate = new Date(event.starts_at).toLocaleDateString('tr-TR', {
     day: 'numeric', month: 'long', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
@@ -375,10 +399,17 @@ export default function EventDetailScreen() {
       </Modal>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <TouchableOpacity style={styles.back} onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={20} color={colors.accent} />
-          <Text style={styles.backText}>Geri</Text>
-        </TouchableOpacity>
+        <View style={styles.back}>
+          <TouchableOpacity style={styles.backLeft} onPress={() => router.back()}>
+            <Ionicons name="chevron-back" size={20} color={colors.accent} />
+            <Text style={styles.backText}>Geri</Text>
+          </TouchableOpacity>
+          {isCreator && !isEnded && (
+            <TouchableOpacity style={styles.editBtn} onPress={() => router.push(`/event/edit/${id}`)}>
+              <Ionicons name="pencil-outline" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
 
         <Text style={styles.title}>{event.title}</Text>
 
@@ -428,84 +459,89 @@ export default function EventDetailScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
-        {(isCreator || event.is_attending) && event.attendee_count > 0 && (
-          <TouchableOpacity
-            style={styles.chatBtn}
-            onPress={() => router.push(`/chat/${id}`)}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.accent} />
-            <Text style={styles.chatBtnText}>Etkinlik Sohbeti</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.accent} />
-          </TouchableOpacity>
-        )}
-        {isCreator ? (
-          <View style={styles.creatorBadge}>
-            <Ionicons name="checkmark-circle" size={18} color={colors.accentSecondary} />
-            <Text style={styles.creatorText}>Bu eventi sen oluşturdun</Text>
+        {isEnded ? (
+          <View style={styles.endedBanner}>
+            <Ionicons name="time-outline" size={20} color={colors.textSecondary} />
+            <Text style={styles.endedText}>Bu etkinlik sona erdi</Text>
           </View>
         ) : (
-          <View style={styles.joinWrapper}>
-            {/* Confetti particles */}
-            {particles.map((p, i) => (
-              <Animated.View
-                key={i}
-                pointerEvents="none"
-                style={{
-                  position: 'absolute',
-                  width: p.size, height: p.size,
-                  borderRadius: p.size / 4,
-                  backgroundColor: p.color,
-                  alignSelf: 'center',
-                  top: '50%', left: '50%',
-                  opacity: p.opacity,
-                  transform: [
-                    { translateX: p.x }, { translateY: p.y }, { scale: p.scale },
-                    { rotate: p.rotate.interpolate({ inputRange: [-6, 6], outputRange: ['-360deg', '360deg'] }) },
-                  ],
-                }}
-              />
-            ))}
-
-            <TouchableOpacity
-              style={[
-                styles.joinButton,
-                event.is_attending && joinPhase === 'idle' && styles.leaveButton,
-                isFull && !event.is_attending && styles.fullButton,
-                { overflow: 'hidden' },
-              ]}
-              onPress={handleJoin}
-              onLayout={e => { buttonWidthRef.current = e.nativeEvent.layout.width }}
-              disabled={joining || joinPhase !== 'idle' || (isFull && !event.is_attending)}
-              activeOpacity={0.9}
-            >
-              {/* Animated fill */}
-              {(joinPhase === 'filling' || joinPhase === 'success') && (
-                <Animated.View
-                  style={{
-                    position: 'absolute', top: 0, left: 0, bottom: 0,
-                    backgroundColor: colors.accentSecondary,
-                    width: progressAnim,
-                  }}
-                />
-              )}
-
-              {joining ? (
-                <ActivityIndicator color="#fff" />
-              ) : joinPhase === 'success' ? (
-                <Animated.View style={[styles.joinedRow, { opacity: successOpacity }]}>
-                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                  <Text style={styles.joinButtonText}>Katıldın!</Text>
-                </Animated.View>
-              ) : joinPhase === 'filling' ? (
-                <Text style={styles.joinButtonText}>Katıl</Text>
-              ) : (
-                <Text style={styles.joinButtonText}>
-                  {isFull && !event.is_attending ? 'Kapasite Dolu' : event.is_attending ? 'Ayrıl' : 'Katıl'}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
+          <>
+            {(isCreator || event.is_attending) && event.attendee_count > 0 && (
+              <TouchableOpacity
+                style={styles.chatBtn}
+                onPress={() => router.push(`/chat/${id}`)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.accent} />
+                <Text style={styles.chatBtnText}>Etkinlik Sohbeti</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+              </TouchableOpacity>
+            )}
+            {isCreator ? (
+              <View style={styles.creatorBadge}>
+                <Ionicons name="checkmark-circle" size={18} color={colors.accentSecondary} />
+                <Text style={styles.creatorText}>Bu eventi sen oluşturdun</Text>
+              </View>
+            ) : (
+              <View style={styles.joinWrapper}>
+                {particles.map((p, i) => (
+                  <Animated.View
+                    key={i}
+                    pointerEvents="none"
+                    style={{
+                      position: 'absolute',
+                      width: p.size, height: p.size,
+                      borderRadius: p.size / 4,
+                      backgroundColor: p.color,
+                      alignSelf: 'center',
+                      top: '50%', left: '50%',
+                      opacity: p.opacity,
+                      transform: [
+                        { translateX: p.x }, { translateY: p.y }, { scale: p.scale },
+                        { rotate: p.rotate.interpolate({ inputRange: [-6, 6], outputRange: ['-360deg', '360deg'] }) },
+                      ],
+                    }}
+                  />
+                ))}
+                <TouchableOpacity
+                  style={[
+                    styles.joinButton,
+                    event.is_attending && joinPhase === 'idle' && styles.leaveButton,
+                    isFull && !event.is_attending && styles.fullButton,
+                    { overflow: 'hidden' },
+                  ]}
+                  onPress={handleJoin}
+                  onLayout={e => { buttonWidthRef.current = e.nativeEvent.layout.width }}
+                  disabled={joining || joinPhase !== 'idle' || (isFull && !event.is_attending)}
+                  activeOpacity={0.9}
+                >
+                  {(joinPhase === 'filling' || joinPhase === 'success') && (
+                    <Animated.View
+                      style={{
+                        position: 'absolute', top: 0, left: 0, bottom: 0,
+                        backgroundColor: colors.accentSecondary,
+                        width: progressAnim,
+                      }}
+                    />
+                  )}
+                  {joining ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : joinPhase === 'success' ? (
+                    <Animated.View style={[styles.joinedRow, { opacity: successOpacity }]}>
+                      <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                      <Text style={styles.joinButtonText}>Katıldın!</Text>
+                    </Animated.View>
+                  ) : joinPhase === 'filling' ? (
+                    <Text style={styles.joinButtonText}>Katıl</Text>
+                  ) : (
+                    <Text style={styles.joinButtonText}>
+                      {isFull && !event.is_attending ? 'Kapasite Dolu' : event.is_attending ? 'Ayrıl' : 'Katıl'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </>
         )}
       </View>
     </View>

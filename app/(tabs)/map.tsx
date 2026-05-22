@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useFocusEffect } from 'expo-router'
 import {
   StyleSheet, View, ActivityIndicator, Text,
   TouchableOpacity, Animated, Easing, Platform,
@@ -125,6 +126,18 @@ function createStyles(c: ColorTheme) {
       borderRadius: 14, paddingVertical: 13,
     },
     ctaText: { fontSize: 14, fontWeight: '700', color: '#fff', letterSpacing: 0.2 },
+    locateBtn: {
+      position: 'absolute',
+      right: 16,
+      width: 48, height: 48, borderRadius: 24,
+      backgroundColor: c.surface,
+      borderWidth: 1, borderColor: c.border,
+      alignItems: 'center', justifyContent: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.18, shadowRadius: 10,
+      elevation: 8,
+    },
   })
 }
 
@@ -133,9 +146,17 @@ export default function MapScreen() {
   const [region, setRegion] = useState<Region>(DEFAULT_REGION)
   const [locationReady, setLocationReady] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null)
+  const [locating, setLocating] = useState(false)
   const slideAnim = useRef(new Animated.Value(200)).current
   const markerJustPressed = useRef(false)
-  const { events } = useEvents(region.latitude, region.longitude)
+  const userCoords = useRef<{ latitude: number; longitude: number } | null>(null)
+  const { events, refetch } = useEvents(region.latitude, region.longitude)
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch()
+    }, [])
+  )
   const { user } = useAuth()
   const colors = useColors()
   const { theme } = useTheme()
@@ -147,6 +168,7 @@ export default function MapScreen() {
       if (status !== 'granted') { setLocationReady(true); return }
       const location = await Location.getCurrentPositionAsync({})
       const { latitude, longitude } = location.coords
+      userCoords.current = { latitude, longitude }
       setRegion({ latitude, longitude, latitudeDelta: 0.05, longitudeDelta: 0.05 })
       setLocationReady(true)
       if (user) {
@@ -154,6 +176,29 @@ export default function MapScreen() {
       }
     })()
   }, [user])
+
+  const handleLocateMe = useCallback(async () => {
+    if (locating) return
+    if (userCoords.current) {
+      mapRef.current?.animateToRegion(
+        { ...userCoords.current, latitudeDelta: 0.02, longitudeDelta: 0.02 },
+        600,
+      )
+      return
+    }
+    setLocating(true)
+    try {
+      const location = await Location.getCurrentPositionAsync({})
+      const { latitude, longitude } = location.coords
+      userCoords.current = { latitude, longitude }
+      mapRef.current?.animateToRegion(
+        { latitude, longitude, latitudeDelta: 0.02, longitudeDelta: 0.02 },
+        600,
+      )
+    } finally {
+      setLocating(false)
+    }
+  }, [locating])
 
   const openCard = (event: Event) => {
     setSelectedEvent(event)
@@ -217,7 +262,7 @@ export default function MapScreen() {
         style={styles.map}
         initialRegion={region}
         showsUserLocation
-        showsMyLocationButton
+        showsMyLocationButton={false}
         onRegionChangeComplete={setRegion}
         onPress={handleMapPress}
         userInterfaceStyle={theme === 'dark' ? 'dark' : 'light'}
@@ -231,6 +276,17 @@ export default function MapScreen() {
           />
         ))}
       </MapView>
+
+      <TouchableOpacity
+        style={[styles.locateBtn, { bottom: TAB_BAR_HEIGHT + 16 }]}
+        onPress={handleLocateMe}
+        activeOpacity={0.75}
+      >
+        {locating
+          ? <ActivityIndicator size="small" color={colors.accent} />
+          : <Ionicons name="navigate" size={20} color={colors.accent} />
+        }
+      </TouchableOpacity>
 
       {selectedEvent && (
         <Animated.View

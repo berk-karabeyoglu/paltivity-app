@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ScrollView, Alert, ActivityIndicator, Platform, Modal
+  StyleSheet, ScrollView, Alert, ActivityIndicator, Platform, Modal, Animated,
 } from 'react-native'
 import MapView, { Marker, MapPressEvent } from 'react-native-maps'
 import DateTimePicker from '@react-native-community/datetimepicker'
@@ -13,6 +13,8 @@ import { useColors } from '../../../lib/hooks/useColors'
 import { ColorTheme } from '../../../constants/colors'
 import { CATEGORIES } from '../../../constants/categories'
 import EmojiPicker from '../../../components/ui/EmojiPicker'
+import { useConfetti } from '../../../lib/hooks/useConfetti'
+import { signalEventRefresh } from '../../../lib/eventRefreshSignal'
 
 type Coords = { latitude: number; longitude: number }
 type PickerMode = 'date' | 'time'
@@ -68,6 +70,7 @@ export default function EditEventScreen() {
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -80,6 +83,7 @@ export default function EditEventScreen() {
 
   const [showPicker, setShowPicker] = useState(false)
   const [pickerMode, setPickerMode] = useState<PickerMode>('date')
+  const { particles, fire } = useConfetti()
 
   useEffect(() => {
     if (user) fetchEvent()
@@ -132,9 +136,10 @@ export default function EditEventScreen() {
         max_attendees: maxAttendees ? parseInt(maxAttendees) : null,
       }).eq('id', id)
       if (error) throw error
-      Alert.alert('Kaydedildi', 'Event güncellendi', [
-        { text: 'Tamam', onPress: () => router.back() },
-      ])
+      fire()
+      setSaved(true)
+      signalEventRefresh()
+      setTimeout(() => router.back(), 900)
     } catch (err: any) {
       Alert.alert('Hata', err.message)
     } finally {
@@ -270,16 +275,35 @@ export default function EditEventScreen() {
         {coords && <Marker coordinate={coords} />}
       </MapView>
 
-      <TouchableOpacity
-        style={[styles.button, saving && styles.buttonDisabled]}
-        onPress={handleSave}
-        disabled={saving}
-      >
-        {saving
-          ? <ActivityIndicator color="#fff" />
-          : <Text style={styles.buttonText}>Kaydet</Text>
-        }
-      </TouchableOpacity>
+      <View style={{ position: 'relative', alignItems: 'center', justifyContent: 'center' }}>
+        {particles.map((p, i) => (
+          <Animated.View
+            key={i}
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              width: p.size, height: p.size,
+              borderRadius: p.size / 4,
+              backgroundColor: p.color,
+              opacity: p.opacity,
+              transform: [
+                { translateX: p.x }, { translateY: p.y }, { scale: p.scale },
+                { rotate: p.rotate.interpolate({ inputRange: [-6, 6], outputRange: ['-360deg', '360deg'] }) },
+              ],
+            }}
+          />
+        ))}
+        <TouchableOpacity
+          style={[styles.button, saving && styles.buttonDisabled, { width: '100%' }]}
+          onPress={handleSave}
+          disabled={saving}
+        >
+          {saving && !saved
+            ? <ActivityIndicator color="#fff" />
+            : <Text style={styles.buttonText}>{saved ? 'Kaydedildi ✓' : 'Kaydet'}</Text>
+          }
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   )
 }

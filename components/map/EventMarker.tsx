@@ -1,5 +1,5 @@
-import { useRef, memo, useEffect, useState, useMemo } from 'react'
-import { View, Text, StyleSheet, Animated, Easing } from 'react-native'
+import { useRef, memo, useMemo } from 'react'
+import { View, Text, StyleSheet, Animated, Easing, Platform } from 'react-native'
 import { Marker } from 'react-native-maps'
 import { Event } from '../../lib/hooks/useEvents'
 import { useColors } from '../../lib/hooks/useColors'
@@ -12,16 +12,27 @@ type Props = {
 
 function createStyles(c: ColorTheme) {
   return StyleSheet.create({
-    wrapper: { alignItems: 'center', width: 48, height: 58 },
+    wrapper: { alignItems: 'center', width: 60, height: 68 },
+    // iOS: tek view + borderWidth
     pin: {
-      width: 48, height: 48, borderRadius: 16,
+      width: 48, height: 48, borderRadius: 24,
       backgroundColor: c.surface,
       borderWidth: 2, borderColor: c.accent,
       alignItems: 'center', justifyContent: 'center',
       shadowColor: c.accent,
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.35, shadowRadius: 8,
-      elevation: 8,
+    },
+    // Android: nested circle — borderWidth cliplanıyor
+    pinOuter: {
+      width: 52, height: 52, borderRadius: 26,
+      backgroundColor: c.accent,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    pinInner: {
+      width: 44, height: 44, borderRadius: 22,
+      backgroundColor: c.surface,
+      alignItems: 'center', justifyContent: 'center',
     },
     emoji: { fontSize: 24 },
     tip: {
@@ -39,18 +50,9 @@ function EventMarker({ event, onSelect }: Props) {
   const styles = useMemo(() => createStyles(colors), [colors])
   const emoji = event.emoji ?? '📍'
   const scaleAnim = useRef(new Animated.Value(1)).current
-  // O5: tracksViewChanges sadece animasyon sırasında true — performans iyileştirmesi
-  const [tracksViewChanges, setTracksViewChanges] = useState(true)
-
-  useEffect(() => {
-    // İlk render tamamlandıktan sonra tracking'i kapat
-    const timer = setTimeout(() => setTracksViewChanges(false), 300)
-    return () => clearTimeout(timer)
-  }, [])
 
   const handlePress = () => {
     onSelect(event)
-    setTracksViewChanges(true)
     scaleAnim.setValue(1)
     Animated.sequence([
       Animated.timing(scaleAnim, {
@@ -65,7 +67,7 @@ function EventMarker({ event, onSelect }: Props) {
         easing: Easing.inOut(Easing.quad),
         useNativeDriver: false,
       }),
-    ]).start(() => setTracksViewChanges(false))
+    ]).start()
   }
 
   return (
@@ -74,14 +76,24 @@ function EventMarker({ event, onSelect }: Props) {
       coordinate={{ latitude: event.latitude, longitude: event.longitude }}
       anchor={{ x: 0.5, y: 1 }}
       onPress={handlePress}
-      tracksViewChanges={tracksViewChanges}
+      tracksViewChanges
     >
       <View style={styles.wrapper}>
-        <View style={styles.pin}>
-          <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-            <Text style={styles.emoji}>{emoji}</Text>
-          </Animated.View>
-        </View>
+        {Platform.OS === 'ios' ? (
+          <View style={styles.pin}>
+            <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+              <Text style={styles.emoji}>{emoji}</Text>
+            </Animated.View>
+          </View>
+        ) : (
+          <View style={styles.pinOuter}>
+            <View style={styles.pinInner}>
+              <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+                <Text style={styles.emoji}>{emoji}</Text>
+              </Animated.View>
+            </View>
+          </View>
+        )}
         <View style={styles.tip} />
       </View>
     </Marker>

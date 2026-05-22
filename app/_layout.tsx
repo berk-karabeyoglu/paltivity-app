@@ -5,10 +5,12 @@ import { useAuth } from '../lib/hooks/useAuth'
 import { AuthProvider } from '../lib/providers/AuthProvider'
 import { ThemeProvider } from '../lib/providers/ThemeProvider'
 import { useColors } from '../lib/hooks/useColors'
+import { useTheme } from '../lib/providers/ThemeProvider'
 import { supabase } from '../lib/supabase'
-import { ActivityIndicator, View } from 'react-native'
+import { ActivityIndicator, View, Platform } from 'react-native'
 import { UnreadContext } from '../lib/hooks/useUnreadNotifications'
 import ToastNotification from '../components/ui/ToastNotification'
+import * as NavigationBar from 'expo-navigation-bar'
 
 type Toast = { title: string; body: string; type?: string; eventId?: string } | null
 
@@ -16,8 +18,21 @@ type Toast = { title: string; body: string; type?: string; eventId?: string } | 
 function RootLayoutInner() {
   const { session, loading } = useAuth()
   const colors = useColors()
+  const { theme } = useTheme()
   const [unreadCount, setUnreadCount] = useState(0)
   const [toast, setToast] = useState<Toast>(null)
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return
+    NavigationBar.setVisibilityAsync('hidden')
+    NavigationBar.setBehaviorAsync('overlay-swipe')
+  }, [])
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return
+    NavigationBar.setBackgroundColorAsync(colors.background)
+    NavigationBar.setButtonStyleAsync(theme === 'dark' ? 'light' : 'dark')
+  }, [theme, colors.background])
 
   const refresh = useCallback(async () => {
     if (!session?.user) return

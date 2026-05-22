@@ -25,40 +25,42 @@ export function useEvents(lat: number, lng: number, radiusKm = 10) {
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [trigger, setTrigger] = useState(0)
   const abortRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latRef = useRef(lat)
+  const lngRef = useRef(lng)
+
+  useEffect(() => { latRef.current = lat }, [lat])
+  useEffect(() => { lngRef.current = lng }, [lng])
 
   useEffect(() => {
     if (!lat || !lng) return
 
-    // Önceki bekleyen isteği iptal et
     if (abortRef.current) clearTimeout(abortRef.current)
 
-    abortRef.current = setTimeout(() => {
-      fetchEvents()
+    abortRef.current = setTimeout(async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const { data, error } = await supabase.rpc('get_nearby_events', {
+          lat: latRef.current,
+          lng: lngRef.current,
+          radius_km: radiusKm,
+          from_time: new Date().toISOString(),
+        })
+        if (error) throw error
+        setEvents(data ?? [])
+      } catch (err: any) {
+        setError(err.message)
+      } finally {
+        setLoading(false)
+      }
     }, DEBOUNCE_MS)
 
     return () => {
       if (abortRef.current) clearTimeout(abortRef.current)
     }
-  }, [lat, lng])
+  }, [lat, lng, trigger])
 
-  const fetchEvents = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const { data, error } = await supabase.rpc('get_nearby_events', {
-        lat,
-        lng,
-        radius_km: radiusKm,
-      })
-      if (error) throw error
-      setEvents(data ?? [])
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return { events, loading, error, refetch: fetchEvents }
+  return { events, loading, error, refetch: () => setTrigger(t => t + 1) }
 }
