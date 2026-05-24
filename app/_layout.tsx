@@ -7,7 +7,7 @@ import { ThemeProvider } from '../lib/providers/ThemeProvider'
 import { useColors } from '../lib/hooks/useColors'
 import { useTheme } from '../lib/providers/ThemeProvider'
 import { supabase } from '../lib/supabase'
-import { ActivityIndicator, View, Platform } from 'react-native'
+import { ActivityIndicator, View, Platform, Alert } from 'react-native'
 import { UnreadContext } from '../lib/hooks/useUnreadNotifications'
 import ToastNotification from '../components/ui/ToastNotification'
 import * as NavigationBar from 'expo-navigation-bar'
@@ -56,6 +56,15 @@ function RootLayoutInner() {
         const row = payload.new as { user_id: string; payload?: { title?: string; body?: string; event_id?: string }; type?: string }
         if (row.user_id !== userId) return
         refresh()
+
+        if (row.type === 'event_kicked') {
+          router.replace('/(tabs)/map')
+          setTimeout(() => {
+            Alert.alert('Etkinlikten çıkarıldın', row.payload?.body ?? 'Bu etkinlikten çıkarıldın.')
+          }, 400)
+          return
+        }
+
         if (row?.payload?.title) {
           setToast({
             title: row.payload.title,
