@@ -160,6 +160,7 @@ export default function ProfileScreen() {
               .from('event_attendees')
               .select('event:events(id, title, starts_at, status, emoji)')
               .eq('user_id', user.id)
+              .eq('status', 'joined')
               .order('joined_at', { ascending: false })
               .limit(20),
           ])

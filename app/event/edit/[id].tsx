@@ -56,6 +56,21 @@ function createStyles(c: ColorTheme) {
     categoryText: { fontSize: 13, color: c.textSecondary },
     categoryTextSelected: { color: c.accent, fontWeight: '600' },
     map: { height: 200, borderRadius: 12, marginTop: 8 },
+    toggleRow: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
+      borderRadius: 12, padding: 14, marginTop: 16,
+    },
+    toggleInfo: { flex: 1, gap: 2 },
+    toggleLabel: { fontSize: 14, fontWeight: '600', color: c.textPrimary },
+    toggleSub: { fontSize: 12, color: c.textSecondary },
+    toggle: {
+      width: 44, height: 26, borderRadius: 13,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    toggleOn: { backgroundColor: c.accent },
+    toggleOff: { backgroundColor: c.border },
+    toggleKnob: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
     button: { backgroundColor: c.accent, borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 32 },
     buttonDisabled: { opacity: 0.6 },
     buttonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
@@ -80,6 +95,7 @@ export default function EditEventScreen() {
   const [startsAt, setStartsAt] = useState<Date>(new Date())
   const [emoji, setEmoji] = useState('📍')
   const [maxAttendees, setMaxAttendees] = useState('')
+  const [requiresApproval, setRequiresApproval] = useState(false)
 
   const [showPicker, setShowPicker] = useState(false)
   const [pickerMode, setPickerMode] = useState<PickerMode>('date')
@@ -106,6 +122,7 @@ export default function EditEventScreen() {
     setCategoryId(event.category_id)
     setEmoji(event.emoji ?? '📍')
     setMaxAttendees(event.max_attendees ? String(event.max_attendees) : '')
+    setRequiresApproval(event.requires_approval ?? false)
     setStartsAt(new Date(event.starts_at))
     setCoords({ latitude: event.latitude, longitude: event.longitude })
     setLoading(false)
@@ -134,6 +151,7 @@ export default function EditEventScreen() {
         emoji,
         starts_at: startsAt.toISOString(),
         max_attendees: maxAttendees ? parseInt(maxAttendees) : null,
+        requires_approval: requiresApproval,
       }).eq('id', id)
       if (error) throw error
       fire()
@@ -242,6 +260,20 @@ export default function EditEventScreen() {
           <EmojiPicker value={emoji} onChange={setEmoji} compact />
         </View>
       </View>
+
+      <TouchableOpacity
+        style={styles.toggleRow}
+        onPress={() => setRequiresApproval(v => !v)}
+        activeOpacity={0.8}
+      >
+        <View style={styles.toggleInfo}>
+          <Text style={styles.toggleLabel}>Onay Gerektir</Text>
+          <Text style={styles.toggleSub}>Katılım isteklerini sen onaylarsın</Text>
+        </View>
+        <View style={[styles.toggle, requiresApproval ? styles.toggleOn : styles.toggleOff]}>
+          <View style={[styles.toggleKnob, { transform: [{ translateX: requiresApproval ? 9 : -9 }] }]} />
+        </View>
+      </TouchableOpacity>
 
       <Text style={styles.label}>Kategori</Text>
       <View style={styles.categories}>

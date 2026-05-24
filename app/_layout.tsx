@@ -11,6 +11,7 @@ import { ActivityIndicator, View, Platform } from 'react-native'
 import { UnreadContext } from '../lib/hooks/useUnreadNotifications'
 import ToastNotification from '../components/ui/ToastNotification'
 import * as NavigationBar from 'expo-navigation-bar'
+import { emitJoinRequest, emitJoinApproved, emitJoinRejected, emitAttendeeJoined, emitAttendeeLeft } from '../lib/joinRequestSignal'
 
 type Toast = { title: string; body: string; type?: string; eventId?: string } | null
 
@@ -44,16 +45,17 @@ function RootLayoutInner() {
   // O8: Channel adı user ID içeriyor — logout/login arası çakışma önlenir
   useEffect(() => {
     if (!session?.user) return
+    const userId = session.user.id
     const channel = supabase
-      .channel(`notifications:${session.user.id}`)
+      .channel(`notifications:${userId}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'notifications',
-        filter: `user_id=eq.${session.user.id}`,
       }, async (payload) => {
+        const row = payload.new as { user_id: string; payload?: { title?: string; body?: string; event_id?: string }; type?: string }
+        if (row.user_id !== userId) return
         refresh()
-        const row = payload.new as { payload?: { title?: string; body?: string; event_id?: string }; type?: string }
         if (row?.payload?.title) {
           setToast({
             title: row.payload.title,
@@ -61,6 +63,21 @@ function RootLayoutInner() {
             type: row.type,
             eventId: row.payload.event_id,
           })
+        }
+        if (row.type === 'join_request' && row.payload?.event_id) {
+          emitJoinRequest(row.payload.event_id)
+        }
+        if (row.type === 'join_approved' && row.payload?.event_id) {
+          emitJoinApproved(row.payload.event_id)
+        }
+        if (row.type === 'join_rejected' && row.payload?.event_id) {
+          emitJoinRejected(row.payload.event_id)
+        }
+        if (row.type === 'event_joined' && row.payload?.event_id) {
+          emitAttendeeJoined(row.payload.event_id)
+        }
+        if (row.type === 'event_left' && row.payload?.event_id) {
+          emitAttendeeLeft(row.payload.event_id)
         }
       })
       .subscribe()

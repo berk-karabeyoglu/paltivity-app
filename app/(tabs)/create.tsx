@@ -65,6 +65,24 @@ function createStyles(c: ColorTheme) {
     rowLeft: { flex: 1 },
     rowRight: { flex: 1, marginTop: 16 },
     map: { height: 200, borderRadius: 12, marginTop: 8 },
+    toggleRow: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
+      borderRadius: 12, padding: 14, marginTop: 16,
+    },
+    toggleInfo: { flex: 1, gap: 2 },
+    toggleLabel: { fontSize: 14, fontWeight: '600', color: c.textPrimary },
+    toggleSub: { fontSize: 12, color: c.textSecondary },
+    toggle: {
+      width: 44, height: 26, borderRadius: 13,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    toggleOn: { backgroundColor: c.accent },
+    toggleOff: { backgroundColor: c.border },
+    toggleKnob: {
+      width: 20, height: 20, borderRadius: 10,
+      backgroundColor: '#fff',
+    },
     buttonWrapper: { position: 'relative', alignItems: 'center', justifyContent: 'center', marginTop: 32 },
     button: {
       backgroundColor: c.accent, borderRadius: 12,
@@ -88,6 +106,7 @@ export default function CreateScreen() {
   const [startsAt, setStartsAt] = useState<Date>(new Date())
   const [emoji, setEmoji] = useState('📍')
   const [maxAttendees, setMaxAttendees] = useState('')
+  const [requiresApproval, setRequiresApproval] = useState(false)
   const [loading, setLoading] = useState(false)
   const [createPhase, setCreatePhase] = useState<'idle' | 'filling' | 'success'>('idle')
   const progressAnim = useRef(new Animated.Value(0)).current
@@ -125,6 +144,7 @@ export default function CreateScreen() {
     if (!title.trim()) return Alert.alert('Hata', 'Başlık gerekli')
     if (!coords) return Alert.alert('Hata', 'Haritadan konum seç')
     if (!dateConfirmed) return Alert.alert('Hata', 'Tarih ve saat seç')
+    if (startsAt.getTime() < Date.now()) return Alert.alert('Hata', 'Geçmiş bir saat seçemezsin')
     if (createPhase !== 'idle') return
 
     setCreatePhase('filling')
@@ -151,6 +171,7 @@ export default function CreateScreen() {
         emoji,
         starts_at: startsAt.toISOString(),
         max_attendees: maxAttendees ? parseInt(maxAttendees) : null,
+        requires_approval: requiresApproval,
       })
       if (error) throw error
 
@@ -163,6 +184,7 @@ export default function CreateScreen() {
       setStartsAt(new Date())
       setEmoji('📍')
       setMaxAttendees('')
+      setRequiresApproval(false)
 
       await animPromise
 
@@ -285,6 +307,20 @@ export default function CreateScreen() {
           <EmojiPicker value={emoji} onChange={setEmoji} compact />
         </View>
       </View>
+
+      <TouchableOpacity
+        style={styles.toggleRow}
+        onPress={() => setRequiresApproval(v => !v)}
+        activeOpacity={0.8}
+      >
+        <View style={styles.toggleInfo}>
+          <Text style={styles.toggleLabel}>Onay Gerektir</Text>
+          <Text style={styles.toggleSub}>Katılım isteklerini sen onaylarsın</Text>
+        </View>
+        <View style={[styles.toggle, requiresApproval ? styles.toggleOn : styles.toggleOff]}>
+          <View style={[styles.toggleKnob, { transform: [{ translateX: requiresApproval ? 9 : -9 }] }]} />
+        </View>
+      </TouchableOpacity>
 
       <Text style={styles.label}>Kategori</Text>
       <View style={styles.categories}>

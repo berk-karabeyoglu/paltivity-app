@@ -6,6 +6,7 @@ import {
 } from 'react-native'
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router'
 import { consumeEventRefresh } from '../../lib/eventRefreshSignal'
+import { onJoinRequest, onJoinApproved, onJoinRejected, onAttendeeJoined, onAttendeeLeft } from '../../lib/joinRequestSignal'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/hooks/useAuth'
@@ -24,9 +25,12 @@ type EventDetail = {
   creator_id: string
   category_id: number | null
   status: string
+  requires_approval: boolean
   profiles: { username: string; display_name: string | null }
   attendee_count: number
+  pending_count: number
   is_attending: boolean
+  is_pending: boolean
 }
 
 function createStyles(c: ColorTheme) {
@@ -137,6 +141,38 @@ function createStyles(c: ColorTheme) {
       borderWidth: 1, borderColor: c.accentSecondary + '40',
     },
     ownerBadgeText: { fontSize: 11, fontWeight: '600', color: c.accentSecondary },
+    pendingAlert: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      backgroundColor: c.warning + '15',
+      borderWidth: 1, borderColor: c.warning + '40',
+      borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11,
+      marginBottom: 16,
+    },
+    pendingAlertText: { flex: 1, color: c.warning, fontSize: 14, fontWeight: '600' },
+    pendingBadge: {
+      backgroundColor: c.warning + '20', borderRadius: 8,
+      paddingHorizontal: 8, paddingVertical: 3,
+      borderWidth: 1, borderColor: c.warning + '40',
+    },
+    pendingBadgeText: { fontSize: 11, fontWeight: '600', color: c.warning },
+    sectionLabel: {
+      fontSize: 11, fontWeight: '700', color: c.textSecondary,
+      paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6,
+      textTransform: 'uppercase', letterSpacing: 0.8,
+    },
+    pendingActions: { flexDirection: 'row', gap: 6 },
+    approveBtn: {
+      width: 32, height: 32, borderRadius: 9,
+      backgroundColor: c.accent + '20', alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderColor: c.accent + '40',
+    },
+    rejectBtn: {
+      width: 32, height: 32, borderRadius: 9,
+      backgroundColor: c.error + '20', alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderColor: c.error + '40',
+    },
+    pendingButton: { backgroundColor: c.surface2, borderWidth: 1, borderColor: c.border },
+    pendingButtonText: { color: c.textSecondary, fontSize: 15, fontWeight: '600' },
   })
 }
 
@@ -154,6 +190,7 @@ export default function EventDetailScreen() {
   const buttonWidthRef = useRef(0)
   const [showAttendees, setShowAttendees] = useState(false)
   const [attendees, setAttendees] = useState<any[]>([])
+  const [pendingAttendees, setPendingAttendees] = useState<any[]>([])
   const [attendeesLoading, setAttendeesLoading] = useState(false)
   const { particles, fire } = useConfetti()
 
@@ -168,24 +205,37 @@ export default function EventDetailScreen() {
           .single()
         if (error) throw error
 
-        const { count: attendeeCount } = await supabase
-          .from('event_attendees')
-          .select('*', { count: 'exact', head: true })
-          .eq('event_id', id)
-          .eq('status', 'joined')
+        const isOwner = data.creator_id === user.id
 
-        const { data: myAttendance } = await supabase
-          .from('event_attendees')
-          .select('status')
-          .eq('event_id', id)
-          .eq('user_id', user.id)
-          .maybeSingle()
+        const [joinedRes, pendingRes, myAttendanceRes] = await Promise.all([
+          supabase
+            .from('event_attendees')
+            .select('*', { count: 'exact', head: true })
+            .eq('event_id', id)
+            .eq('status', 'joined'),
+          isOwner
+            ? supabase
+                .from('event_attendees')
+                .select('*', { count: 'exact', head: true })
+                .eq('event_id', id)
+                .eq('status', 'pending')
+            : Promise.resolve({ count: 0 }),
+          supabase
+            .from('event_attendees')
+            .select('status')
+            .eq('event_id', id)
+            .eq('user_id', user.id)
+            .maybeSingle(),
+        ])
 
         if (!mounted.current) return
         setEvent({
           ...data,
-          attendee_count: attendeeCount ?? 0,
-          is_attending: myAttendance?.status === 'joined',
+          attendee_count: joinedRes.count ?? 0,
+          pending_count: pendingRes.count ?? 0,
+          is_attending: (myAttendanceRes as any).data?.status === 'joined',
+          is_pending: (myAttendanceRes as any).data?.status === 'pending',
+          requires_approval: data.requires_approval ?? false,
         })
       } catch (err: any) {
         if (!mounted.current) return
@@ -212,6 +262,36 @@ export default function EventDetailScreen() {
       return () => { mounted.current = false }
   }, [fetchEvent]))
 
+  // _layout.tsx'teki notification channel'dan join sinyalleri al
+  useEffect(() => {
+    const unsubRequest = onJoinRequest((eventId) => {
+      if (eventId !== id) return
+      setEvent(prev => prev ? { ...prev, pending_count: prev.pending_count + 1 } : prev)
+    })
+    const unsubApproved = onJoinApproved((eventId) => {
+      if (eventId !== id) return
+      setEvent(prev => prev ? {
+        ...prev,
+        is_pending: false,
+        is_attending: true,
+        attendee_count: prev.attendee_count + 1,
+      } : prev)
+    })
+    const unsubRejected = onJoinRejected((eventId) => {
+      if (eventId !== id) return
+      setEvent(prev => prev ? { ...prev, is_pending: false } : prev)
+    })
+    const unsubJoined = onAttendeeJoined((eventId) => {
+      if (eventId !== id) return
+      setEvent(prev => prev ? { ...prev, attendee_count: prev.attendee_count + 1 } : prev)
+    })
+    const unsubLeft = onAttendeeLeft((eventId) => {
+      if (eventId !== id) return
+      setEvent(prev => prev ? { ...prev, attendee_count: Math.max(0, prev.attendee_count - 1) } : prev)
+    })
+    return () => { unsubRequest(); unsubApproved(); unsubRejected(); unsubJoined(); unsubLeft() }
+  }, [id])
+
 
   const handleJoin = async () => {
     if (!event || joinPhase !== 'idle' || !user) return
@@ -236,11 +316,20 @@ export default function EventDetailScreen() {
     })
 
     try {
-      const { error } = await supabase.rpc('join_event', {
+      const { data: joinResult, error } = await supabase.rpc('join_event', {
         p_event_id: id,
         p_user_id: user.id,
       })
       if (error) throw error
+
+      const isPending = joinResult === 'pending'
+
+      if (isPending) {
+        progressAnim.setValue(0)
+        setJoinPhase('idle')
+        setEvent(prev => prev ? { ...prev, is_pending: true } : prev)
+        return
+      }
 
       setEvent(prev => prev ? { ...prev, is_attending: true, attendee_count: prev.attendee_count + 1 } : prev)
 
@@ -264,28 +353,93 @@ export default function EventDetailScreen() {
   const openAttendees = async () => {
     let mounted = true
     setAttendees([])
+    setPendingAttendees([])
     setShowAttendees(true)
     setAttendeesLoading(true)
-    const { data } = await supabase
-      .from('event_attendees')
-      .select('user_id, profiles:user_id(full_name, username, avatar_url)')
-      .eq('event_id', id)
-      .eq('status', 'joined')
+
+    const isOwner = event?.creator_id === user?.id
+
+    const [joinedRes, pendingRes] = await Promise.all([
+      supabase
+        .from('event_attendees')
+        .select('user_id, profiles:user_id(full_name, username, avatar_url)')
+        .eq('event_id', id)
+        .eq('status', 'joined'),
+      isOwner
+        ? supabase
+            .from('event_attendees')
+            .select('user_id, profiles:user_id(full_name, username, avatar_url)')
+            .eq('event_id', id)
+            .eq('status', 'pending')
+        : Promise.resolve({ data: [] as any[] }),
+    ])
+
     if (!mounted) return
-    setAttendees(data ?? [])
+    setAttendees(joinedRes.data ?? [])
+    setPendingAttendees((pendingRes as any).data ?? [])
     setAttendeesLoading(false)
     return () => { mounted = false }
+  }
+
+  const handleApprove = async (targetUserId: string) => {
+    const { error } = await supabase.rpc('approve_attendee', {
+      p_event_id: id,
+      p_target_user_id: targetUserId,
+      p_approver_id: user?.id ?? '',
+    })
+    if (error) return Alert.alert('Hata', 'Onaylanamadı.')
+    const approved = pendingAttendees.find(a => a.user_id === targetUserId)
+    setPendingAttendees(prev => prev.filter(a => a.user_id !== targetUserId))
+    if (approved) setAttendees(prev => [...prev, approved])
+    setEvent(prev => prev ? {
+      ...prev,
+      attendee_count: prev.attendee_count + 1,
+      pending_count: Math.max(0, prev.pending_count - 1),
+    } : prev)
+  }
+
+  const handleReject = async (targetUserId: string) => {
+    const { error } = await supabase.rpc('reject_attendee', {
+      p_event_id: id,
+      p_target_user_id: targetUserId,
+      p_rejecter_id: user?.id ?? '',
+    })
+    if (error) return Alert.alert('Hata', 'Reddedilemedi.')
+    setPendingAttendees(prev => prev.filter(a => a.user_id !== targetUserId))
+    setEvent(prev => prev ? { ...prev, pending_count: Math.max(0, prev.pending_count - 1) } : prev)
+  }
+
+  const handleKick = (targetUserId: string, targetName: string) => {
+    Alert.alert(
+      'Kullanıcıyı at',
+      `${targetName} kişisini etkinlikten atmak istediğine emin misin?`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'At', style: 'destructive',
+          onPress: async () => {
+            const { error } = await supabase.rpc('kick_attendee', {
+              p_event_id: id,
+              p_target_user_id: targetUserId,
+              p_kicker_id: user?.id ?? '',
+            })
+            if (error) return Alert.alert('Hata', 'Kullanıcı atılamadı.')
+            setAttendees(prev => prev.filter(a => a.user_id !== targetUserId))
+            setEvent(prev => prev ? { ...prev, attendee_count: Math.max(0, prev.attendee_count - 1) } : prev)
+          },
+        },
+      ]
+    )
   }
 
   const doLeave = async () => {
     if (!user) return
     setJoining(true)
     try {
-      const { error } = await supabase
-        .from('event_attendees')
-        .update({ status: 'left' })
-        .eq('event_id', id)
-        .eq('user_id', user.id)
+      const { error } = await supabase.rpc('leave_event', {
+        p_event_id: id,
+        p_user_id: user.id,
+      })
       if (error) throw error
       setEvent(prev => prev ? { ...prev, is_attending: false, attendee_count: Math.max(0, prev.attendee_count - 1) } : prev)
     } catch (err: any) {
@@ -347,18 +501,75 @@ export default function EventDetailScreen() {
             </View>
             {attendeesLoading ? (
               <ActivityIndicator color={colors.accent} style={{ marginTop: 32 }} />
-            ) : sortedAttendees.length === 0 ? (
-              <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
-                <Ionicons name="people-outline" size={40} color={colors.textSecondary} />
-                <Text style={{ color: colors.textSecondary, fontSize: 15, fontWeight: '600' }}>Henüz katılımcı yok</Text>
-                {!isCreator && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>İlk katılan sen ol!</Text>}
-              </View>
             ) : (
               <FlatList
                 data={sortedAttendees}
-                keyExtractor={a => a.user_id}
+                keyExtractor={a => 'j_' + a.user_id}
                 contentContainerStyle={styles.attendeeList}
                 showsVerticalScrollIndicator={false}
+                ListHeaderComponent={
+                  isCreator && pendingAttendees.length > 0 ? (
+                    <>
+                      <Text style={styles.sectionLabel}>Bekleyenler ({pendingAttendees.length})</Text>
+                      {pendingAttendees.map(item => {
+                        const profile = item.profiles
+                        const name = profile?.full_name ?? profile?.username ?? 'Kullanıcı'
+                        const initials = name.slice(0, 2).toUpperCase()
+                        return (
+                          <View key={'p_' + item.user_id} style={styles.attendeeRow}>
+                            <TouchableOpacity
+                              style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}
+                              onPress={() => { setShowAttendees(false); router.push(`/user/${item.user_id}`) }}
+                              activeOpacity={0.7}
+                            >
+                              {profile?.avatar_url ? (
+                                <Image source={{ uri: profile.avatar_url }} style={styles.attendeeAvatar} />
+                              ) : (
+                                <View style={[styles.attendeeAvatar, styles.attendeeAvatarFallback]}>
+                                  <Text style={styles.attendeeInitials}>{initials}</Text>
+                                </View>
+                              )}
+                              <View style={styles.attendeeInfo}>
+                                <Text style={styles.attendeeName}>{name}</Text>
+                                {profile?.username && (
+                                  <Text style={styles.attendeeUsername}>@{profile.username}</Text>
+                                )}
+                              </View>
+                            </TouchableOpacity>
+                            <View style={styles.pendingActions}>
+                              <TouchableOpacity
+                                style={styles.approveBtn}
+                                onPress={() => handleApprove(item.user_id)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              >
+                                <Ionicons name="checkmark" size={16} color={colors.accent} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.rejectBtn}
+                                onPress={() => handleReject(item.user_id)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              >
+                                <Ionicons name="close" size={16} color={colors.error} />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        )
+                      })}
+                      {sortedAttendees.length > 0 && (
+                        <Text style={styles.sectionLabel}>Katılımcılar ({sortedAttendees.length})</Text>
+                      )}
+                    </>
+                  ) : null
+                }
+                ListEmptyComponent={
+                  pendingAttendees.length === 0 ? (
+                    <View style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
+                      <Ionicons name="people-outline" size={40} color={colors.textSecondary} />
+                      <Text style={{ color: colors.textSecondary, fontSize: 15, fontWeight: '600' }}>Henüz katılımcı yok</Text>
+                      {!isCreator && <Text style={{ color: colors.textSecondary, fontSize: 13 }}>İlk katılan sen ol!</Text>}
+                    </View>
+                  ) : null
+                }
                 renderItem={({ item }) => {
                   const profile = item.profiles
                   const isOwner = item.user_id === event.creator_id
@@ -388,7 +599,16 @@ export default function EventDetailScreen() {
                           <Text style={styles.ownerBadgeText}>Oluşturan</Text>
                         </View>
                       )}
-                      <Ionicons name="chevron-forward" size={14} color={colors.border} />
+                      {isCreator && !isOwner ? (
+                        <TouchableOpacity
+                          onPress={() => handleKick(item.user_id, name)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons name="person-remove-outline" size={18} color={colors.error} />
+                        </TouchableOpacity>
+                      ) : (
+                        <Ionicons name="chevron-forward" size={14} color={colors.border} />
+                      )}
                     </TouchableOpacity>
                   )
                 }}
@@ -412,6 +632,16 @@ export default function EventDetailScreen() {
         </View>
 
         <Text style={styles.title}>{event.title}</Text>
+
+        {isCreator && event.pending_count > 0 && (
+          <TouchableOpacity style={styles.pendingAlert} onPress={openAttendees} activeOpacity={0.8}>
+            <Ionicons name="time-outline" size={18} color={colors.warning} />
+            <Text style={styles.pendingAlertText}>
+              {event.pending_count} bekleyen katılım isteği
+            </Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.warning} />
+          </TouchableOpacity>
+        )}
 
         <View style={styles.metaCard}>
           <TouchableOpacity
@@ -507,12 +737,13 @@ export default function EventDetailScreen() {
                   style={[
                     styles.joinButton,
                     event.is_attending && joinPhase === 'idle' && styles.leaveButton,
-                    isFull && !event.is_attending && styles.fullButton,
+                    isFull && !event.is_attending && !event.is_pending && styles.fullButton,
+                    event.is_pending && styles.pendingButton,
                     { overflow: 'hidden' },
                   ]}
                   onPress={handleJoin}
                   onLayout={e => { buttonWidthRef.current = e.nativeEvent.layout.width }}
-                  disabled={joining || joinPhase !== 'idle' || (isFull && !event.is_attending)}
+                  disabled={joining || joinPhase !== 'idle' || (isFull && !event.is_attending) || event.is_pending}
                   activeOpacity={0.9}
                 >
                   {(joinPhase === 'filling' || joinPhase === 'success') && (
@@ -533,6 +764,8 @@ export default function EventDetailScreen() {
                     </Animated.View>
                   ) : joinPhase === 'filling' ? (
                     <Text style={styles.joinButtonText}>Katıl</Text>
+                  ) : event.is_pending ? (
+                    <Text style={styles.pendingButtonText}>İstek Gönderildi</Text>
                   ) : (
                     <Text style={styles.joinButtonText}>
                       {isFull && !event.is_attending ? 'Kapasite Dolu' : event.is_attending ? 'Ayrıl' : 'Katıl'}

@@ -90,6 +90,10 @@ export default function NotificationsScreen() {
     nearby_event:    { icon: 'location-outline',             color: '#93C5FD' },
     chat_message:    { icon: 'chatbubble-ellipses-outline',  color: '#34D399' },
     event_cancelled: { icon: 'close-circle-outline',         color: colors.error },
+    join_request:    { icon: 'time-outline',                 color: '#F59E0B' },
+    join_approved:   { icon: 'checkmark-circle-outline',    color: '#34D399' },
+    join_rejected:   { icon: 'close-circle-outline',         color: colors.error },
+    event_left:      { icon: 'exit-outline',                 color: colors.textSecondary },
   }
 
   const fetchNotifications = async () => {
