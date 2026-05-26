@@ -1,10 +1,10 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useCallback } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, Alert, ActivityIndicator, Platform, Modal,
-  Animated, Easing,
+  Animated, Easing, KeyboardAvoidingView, Keyboard,
 } from 'react-native'
-import MapView, { Marker, MapPressEvent } from 'react-native-maps'
+import MapView, { Marker, MapPressEvent, Region } from 'react-native-maps'
 import DateTimePicker from '@react-native-community/datetimepicker'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
@@ -19,6 +19,11 @@ import EmojiPicker from '../../components/ui/EmojiPicker'
 type Coords = { latitude: number; longitude: number }
 type PickerMode = 'date' | 'time'
 
+const DEFAULT_REGION: Region = {
+  latitude: 41.0082, longitude: 28.9784,
+  latitudeDelta: 0.05, longitudeDelta: 0.05,
+}
+
 function createStyles(c: ColorTheme) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: c.background },
@@ -31,6 +36,37 @@ function createStyles(c: ColorTheme) {
       backgroundColor: c.surface, height: 52,
     },
     multiline: { height: 80, textAlignVertical: 'top', paddingTop: 14 },
+    locationSection: { marginTop: 8 },
+    searchBar: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border,
+      paddingHorizontal: 14, height: 50, marginBottom: 8,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.07, shadowRadius: 8, elevation: 3,
+      zIndex: 20,
+    },
+    searchBarInput: { flex: 1, fontSize: 15, color: c.textPrimary },
+    suggestionDropdown: {
+      backgroundColor: c.surface, borderRadius: 14,
+      borderWidth: 1, borderColor: c.border, overflow: 'hidden',
+      marginBottom: 8,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.08, shadowRadius: 12, elevation: 5,
+    },
+    suggestionRow: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingHorizontal: 14, paddingVertical: 13, gap: 12,
+    },
+    suggestionRowBorder: { borderBottomWidth: 1, borderBottomColor: c.border },
+    suggestionIcon: {
+      width: 34, height: 34, borderRadius: 9,
+      backgroundColor: c.accent + '18',
+      alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    },
+    suggestionTexts: { flex: 1 },
+    suggestionName: { fontSize: 14, fontWeight: '600', color: c.textPrimary },
+    suggestionSub: { fontSize: 12, color: c.textSecondary, marginTop: 2 },
     dateRow: { flexDirection: 'row', gap: 10 },
     dateButton: {
       flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -64,7 +100,29 @@ function createStyles(c: ColorTheme) {
     row: { flexDirection: 'row', gap: 10, alignItems: 'flex-end' },
     rowLeft: { flex: 1 },
     rowRight: { flex: 1, marginTop: 16 },
-    map: { height: 200, borderRadius: 12, marginTop: 8 },
+    mapWrapper: { borderRadius: 14, overflow: 'hidden' },
+    map: { height: 220 },
+    fullscreenBtn: {
+      position: 'absolute', top: 8, right: 8,
+      width: 36, height: 36, borderRadius: 10,
+      backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    fullscreenMap: { flex: 1 },
+    fullscreenHeader: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 16, paddingTop: 56, paddingBottom: 14,
+      backgroundColor: c.background, borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    fullscreenTitle: { fontSize: 16, fontWeight: '700', color: c.textPrimary },
+    fullscreenDone: { fontSize: 15, fontWeight: '700', color: c.accent },
+    fullscreenHint: {
+      position: 'absolute', bottom: 40, alignSelf: 'center',
+      backgroundColor: c.surface, borderRadius: 20,
+      paddingHorizontal: 16, paddingVertical: 10,
+      borderWidth: 1, borderColor: c.border,
+    },
+    fullscreenHintText: { fontSize: 13, color: c.textSecondary, fontWeight: '500' },
     toggleRow: {
       flexDirection: 'row', alignItems: 'center',
       backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
@@ -79,10 +137,7 @@ function createStyles(c: ColorTheme) {
     },
     toggleOn: { backgroundColor: c.accent },
     toggleOff: { backgroundColor: c.border },
-    toggleKnob: {
-      width: 20, height: 20, borderRadius: 10,
-      backgroundColor: '#fff',
-    },
+    toggleKnob: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
     buttonWrapper: { position: 'relative', alignItems: 'center', justifyContent: 'center', marginTop: 32 },
     button: {
       backgroundColor: c.accent, borderRadius: 12,
@@ -103,15 +158,23 @@ export default function CreateScreen() {
   const [address, setAddress] = useState('')
   const [categoryId, setCategoryId] = useState<number | null>(null)
   const [coords, setCoords] = useState<Coords | null>(null)
+  const [region, setRegion] = useState<Region>(DEFAULT_REGION)
   const [startsAt, setStartsAt] = useState<Date>(new Date())
   const [emoji, setEmoji] = useState('📍')
   const [maxAttendees, setMaxAttendees] = useState('')
   const [requiresApproval, setRequiresApproval] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [geocoding, setGeocoding] = useState(false)
+  const [suggestions, setSuggestions] = useState<any[]>([])
+  const [showFullscreen, setShowFullscreen] = useState(false)
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scrollRef = useRef<ScrollView>(null)
+  const locationSectionRef = useRef<View>(null)
   const [createPhase, setCreatePhase] = useState<'idle' | 'filling' | 'success'>('idle')
   const progressAnim = useRef(new Animated.Value(0)).current
   const successOpacity = useRef(new Animated.Value(0)).current
   const buttonWidthRef = useRef(0)
+  const mapRef = useRef<MapView>(null)
+  const fullscreenMapRef = useRef<MapView>(null)
   const { particles, fire } = useConfetti()
   const [showPicker, setShowPicker] = useState(false)
   const [pickerMode, setPickerMode] = useState<PickerMode>('date')
@@ -136,8 +199,97 @@ export default function CreateScreen() {
   const formatTime = (date: Date) =>
     date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
 
+  const PLACES_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_KEY!
+
+  const fetchSuggestions = useCallback(async (query: string) => {
+    if (query.trim().length < 3) { setSuggestions([]); return }
+    setGeocoding(true)
+    try {
+      const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': PLACES_KEY,
+        },
+        body: JSON.stringify({ input: query, languageCode: 'tr', regionCode: 'TR' }),
+      })
+      const data = await res.json()
+      setSuggestions(data.suggestions ?? [])
+    } catch {
+      setSuggestions([])
+    } finally {
+      setGeocoding(false)
+    }
+  }, [])
+
+  const handleAddressChange = (text: string) => {
+    setAddress(text)
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+    searchTimeoutRef.current = setTimeout(() => fetchSuggestions(text), 400)
+    // Öneri listesi gelince görünür alanda olsun
+    setTimeout(() => {
+      locationSectionRef.current?.measureInWindow((_x, y) => {
+        scrollRef.current?.scrollTo({ y: y - 80, animated: true })
+      })
+    }, 500)
+  }
+
+  const handleSelectSuggestion = async (item: any) => {
+    Keyboard.dismiss()
+    const prediction = item.placePrediction
+    const name = prediction?.structuredFormat?.mainText?.text ?? prediction?.text?.text ?? ''
+    const secondary = prediction?.structuredFormat?.secondaryText?.text ?? ''
+    setAddress(secondary ? `${name}, ${secondary}` : name)
+    setSuggestions([])
+    try {
+      const placeId = prediction?.placeId
+      if (!placeId) return
+      const res = await fetch(
+        `https://places.googleapis.com/v1/places/${placeId}?fields=location&languageCode=tr`,
+        { headers: { 'X-Goog-Api-Key': PLACES_KEY } }
+      )
+      const data = await res.json()
+      const loc = data.location
+      if (!loc) return
+      const newCoords: Coords = { latitude: loc.latitude, longitude: loc.longitude }
+      const newRegion: Region = { ...newCoords, latitudeDelta: 0.01, longitudeDelta: 0.01 }
+      setCoords(newCoords)
+      setRegion(newRegion)
+      mapRef.current?.animateToRegion(newRegion, 800)
+    } catch {}
+  }
+
+  const handleGeocode = async () => {
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+    const query = address.trim()
+    if (!query) return
+    setGeocoding(true)
+    setSuggestions([])
+    try {
+      const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': PLACES_KEY,
+        },
+        body: JSON.stringify({ input: query, languageCode: 'tr', regionCode: 'TR' }),
+      })
+      const data = await res.json()
+      if (!data.suggestions?.length) return Alert.alert('Bulunamadı', 'Adres bulunamadı, farklı bir arama dene.')
+      setSuggestions(data.suggestions)
+    } catch {
+      Alert.alert('Hata', 'Konum aranırken bir sorun oluştu.')
+    } finally {
+      setGeocoding(false)
+    }
+  }
+
   const handleMapPress = (e: MapPressEvent) => {
-    setCoords(e.nativeEvent.coordinate)
+    try {
+      const coord = e?.nativeEvent?.coordinate
+      if (!coord) return
+      setCoords(coord)
+    } catch {}
   }
 
   const handleCreate = async () => {
@@ -175,16 +327,17 @@ export default function CreateScreen() {
       })
       if (error) throw error
 
-      // Reset form immediately so returning to tab shows a clean screen
       setTitle('')
       setDescription('')
       setAddress('')
       setCategoryId(null)
       setCoords(null)
+      setRegion(DEFAULT_REGION)
       setStartsAt(new Date())
       setEmoji('📍')
       setMaxAttendees('')
       setRequiresApproval(false)
+      setSuggestions([])
 
       await animPromise
 
@@ -204,7 +357,12 @@ export default function CreateScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={0}
+    >
+    <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Text style={styles.heading}>Event Oluştur</Text>
 
       <Text style={styles.label}>Başlık *</Text>
@@ -227,14 +385,6 @@ export default function CreateScreen() {
         numberOfLines={3}
       />
 
-      <Text style={styles.label}>Adres</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Mekan adı veya adres"
-        placeholderTextColor={colors.textSecondary}
-        value={address}
-        onChangeText={setAddress}
-      />
 
       <Text style={styles.label}>Tarih ve Saat *</Text>
       <View style={styles.dateRow}>
@@ -322,37 +472,110 @@ export default function CreateScreen() {
         </View>
       </TouchableOpacity>
 
-      <Text style={styles.label}>Kategori</Text>
-      <View style={styles.categories}>
-        {CATEGORIES.map(cat => (
-          <TouchableOpacity
-            key={cat.id}
-            style={[styles.categoryChip, categoryId === cat.id && styles.categoryChipSelected]}
-            onPress={() => setCategoryId(cat.id === categoryId ? null : cat.id)}
+      <Text style={styles.label}>Konum *</Text>
+      <View ref={locationSectionRef} style={styles.locationSection}>
+        {/* Arama çubuğu */}
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={16} color={colors.textSecondary} />
+          <TextInput
+            style={styles.searchBarInput}
+            placeholder="Mekan veya adres ara..."
+            placeholderTextColor={colors.textSecondary}
+            value={address}
+            onChangeText={handleAddressChange}
+            onSubmitEditing={handleGeocode}
+            returnKeyType="search"
+          />
+          {geocoding
+            ? <ActivityIndicator size="small" color={colors.accent} />
+            : address.length > 0
+              ? <TouchableOpacity onPress={() => { setAddress(''); setSuggestions([]) }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+              : null
+          }
+        </View>
+
+        {/* Floating öneri listesi */}
+        {suggestions.length > 0 && (
+          <View style={styles.suggestionDropdown}>
+            {suggestions.map((item, index) => {
+              const pred = item.placePrediction
+              const name = pred?.structuredFormat?.mainText?.text ?? pred?.text?.text ?? ''
+              const sub = pred?.structuredFormat?.secondaryText?.text ?? ''
+              return (
+                <TouchableOpacity
+                  key={pred?.placeId ?? index}
+                  style={[styles.suggestionRow, index < suggestions.length - 1 && styles.suggestionRowBorder]}
+                  onPress={() => handleSelectSuggestion(item)}
+                  activeOpacity={0.55}
+                >
+                  <View style={styles.suggestionIcon}>
+                    <Ionicons name="location" size={15} color={colors.accent} />
+                  </View>
+                  <View style={styles.suggestionTexts}>
+                    <Text style={styles.suggestionName} numberOfLines={1}>{name}</Text>
+                    {!!sub && <Text style={styles.suggestionSub} numberOfLines={1}>{sub}</Text>}
+                  </View>
+                  <Ionicons name="chevron-forward" size={13} color={colors.border} />
+                </TouchableOpacity>
+              )
+            })}
+          </View>
+        )}
+
+        {/* Harita */}
+        <View style={styles.mapWrapper}>
+          <MapView
+            ref={mapRef}
+            style={styles.map}
+            region={region}
+            onRegionChangeComplete={setRegion}
+            onPress={handleMapPress}
           >
-            <Text style={[styles.categoryText, categoryId === cat.id && styles.categoryTextSelected]}>
-              {cat.icon} {cat.name}
-            </Text>
+            {coords && <Marker coordinate={coords} />}
+          </MapView>
+          <TouchableOpacity style={styles.fullscreenBtn} onPress={() => setShowFullscreen(true)}>
+            <Ionicons name="expand-outline" size={18} color={colors.textSecondary} />
           </TouchableOpacity>
-        ))}
+        </View>
       </View>
 
-      <Text style={styles.label}>Konum * {coords ? '✅' : '(haritaya dokun)'}</Text>
-      <MapView
-        style={styles.map}
-        initialRegion={{
-          latitude: 41.0082,
-          longitude: 28.9784,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        }}
-        onPress={handleMapPress}
-      >
-        {coords && <Marker coordinate={coords} />}
-      </MapView>
+      {/* Tam ekran harita */}
+      <Modal visible={showFullscreen} animationType="slide">
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+          <View style={styles.fullscreenHeader}>
+            <TouchableOpacity onPress={() => setShowFullscreen(false)}>
+              <Ionicons name="chevron-back" size={24} color={colors.accent} />
+            </TouchableOpacity>
+            <Text style={styles.fullscreenTitle}>Konum Seç</Text>
+            <TouchableOpacity onPress={() => setShowFullscreen(false)}>
+              <Text style={styles.fullscreenDone}>Tamam</Text>
+            </TouchableOpacity>
+          </View>
+          <MapView
+            ref={fullscreenMapRef}
+            style={styles.fullscreenMap}
+            region={region}
+            onRegionChangeComplete={setRegion}
+            onPress={(e) => {
+              try {
+                const coord = e?.nativeEvent?.coordinate
+                if (!coord) return
+                setCoords(coord)
+                setRegion(r => ({ ...r, latitude: coord.latitude, longitude: coord.longitude }))
+              } catch {}
+            }}
+          >
+            {coords && <Marker coordinate={coords} />}
+          </MapView>
+          <View style={styles.fullscreenHint} pointerEvents="none">
+            <Text style={styles.fullscreenHintText}>Konumu seçmek için haritaya dokun</Text>
+          </View>
+        </View>
+      </Modal>
 
       <View style={styles.buttonWrapper}>
-        {/* Confetti particles */}
         {particles.map((p, i) => (
           <Animated.View
             key={i}
@@ -401,5 +624,6 @@ export default function CreateScreen() {
         </TouchableOpacity>
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   )
 }

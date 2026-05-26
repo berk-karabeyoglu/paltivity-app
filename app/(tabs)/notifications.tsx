@@ -95,6 +95,7 @@ export default function NotificationsScreen() {
     join_rejected:   { icon: 'close-circle-outline',         color: colors.error },
     event_left:      { icon: 'exit-outline',                 color: colors.textSecondary },
     event_kicked:    { icon: 'ban-outline',                  color: colors.error },
+    event_updated:   { icon: 'create-outline',               color: '#818CF8' },
   }
 
   const fetchNotifications = async () => {

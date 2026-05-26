@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, ActivityIndicator, Alert,
   Animated, Easing, Modal, FlatList, Image,
+  Linking, Platform,
 } from 'react-native'
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router'
 import { consumeEventRefresh } from '../../lib/eventRefreshSignal'
@@ -31,6 +32,8 @@ type EventDetail = {
   pending_count: number
   is_attending: boolean
   is_pending: boolean
+  latitude: number | null
+  longitude: number | null
 }
 
 function createStyles(c: ColorTheme) {
@@ -160,17 +163,28 @@ function createStyles(c: ColorTheme) {
       paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6,
       textTransform: 'uppercase', letterSpacing: 0.8,
     },
-    pendingActions: { flexDirection: 'row', gap: 6 },
+    pendingCard: {
+      backgroundColor: c.warning + '08',
+      borderWidth: 1, borderColor: c.warning + '28',
+      borderRadius: 14, padding: 12, marginBottom: 8,
+    },
+    pendingPerson: {
+      flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16,
+    },
+    pendingActions: { flexDirection: 'row', gap: 8 },
     approveBtn: {
-      width: 32, height: 32, borderRadius: 9,
-      backgroundColor: c.accent + '20', alignItems: 'center', justifyContent: 'center',
-      borderWidth: 1, borderColor: c.accent + '40',
+      flex: 1, height: 40, borderRadius: 10,
+      backgroundColor: '#22C55E',
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     },
+    approveBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
     rejectBtn: {
-      width: 32, height: 32, borderRadius: 9,
-      backgroundColor: c.error + '20', alignItems: 'center', justifyContent: 'center',
-      borderWidth: 1, borderColor: c.error + '40',
+      flex: 1, height: 40, borderRadius: 10,
+      backgroundColor: c.error + '10',
+      borderWidth: 1, borderColor: c.error + '35',
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     },
+    rejectBtnText: { color: c.error, fontWeight: '600', fontSize: 14 },
     pendingButton: { backgroundColor: c.surface2, borderWidth: 1, borderColor: c.border },
     pendingButtonText: { color: c.textSecondary, fontSize: 15, fontWeight: '600' },
   })
@@ -200,7 +214,7 @@ export default function EventDetailScreen() {
       try {
         const { data, error } = await supabase
           .from('events')
-          .select(`*, profiles:creator_id (username, display_name)`)
+          .select(`*, profiles:creator_id (username, display_name), lat, lng`)
           .eq('id', id)
           .single()
         if (error) throw error
@@ -236,6 +250,8 @@ export default function EventDetailScreen() {
           is_attending: (myAttendanceRes as any).data?.status === 'joined',
           is_pending: (myAttendanceRes as any).data?.status === 'pending',
           requires_approval: data.requires_approval ?? false,
+          latitude: data.lat ?? null,
+          longitude: data.lng ?? null,
         })
       } catch (err: any) {
         if (!mounted.current) return
@@ -432,6 +448,37 @@ export default function EventDetailScreen() {
     )
   }
 
+  const openInMaps = () => {
+    if (!event) return
+    const { latitude: lat, longitude: lng, address } = event
+    // Koordinat varsa pin'e git, yoksa adres metniyle ara
+    const hasCoords = lat != null && lng != null
+    const appleUrl = hasCoords
+      ? `maps://?ll=${lat},${lng}&q=${encodeURIComponent(address ?? 'Etkinlik')}`
+      : `maps://?q=${encodeURIComponent(address ?? '')}`
+    const googleCoordUrl = `https://maps.google.com/?q=${lat},${lng}`
+    const googleQueryUrl = `https://maps.google.com/?q=${encodeURIComponent(address ?? '')}`
+    const googleUrl = hasCoords ? googleCoordUrl : googleQueryUrl
+
+    if (Platform.OS === 'ios') {
+      Alert.alert('Haritada Aç', undefined, [
+        { text: 'Apple Haritalar', onPress: () => Linking.openURL(appleUrl) },
+        {
+          text: 'Google Maps', onPress: async () => {
+            const nativeUrl = hasCoords
+              ? `comgooglemaps://?q=${lat},${lng}`
+              : `comgooglemaps://?q=${encodeURIComponent(address ?? '')}`
+            const canOpen = await Linking.canOpenURL(nativeUrl)
+            Linking.openURL(canOpen ? nativeUrl : googleUrl)
+          }
+        },
+        { text: 'İptal', style: 'cancel' },
+      ])
+    } else {
+      Linking.openURL(googleUrl)
+    }
+  }
+
   const doLeave = async () => {
     if (!user) return
     setJoining(true)
@@ -516,9 +563,9 @@ export default function EventDetailScreen() {
                         const name = profile?.full_name ?? profile?.username ?? 'Kullanıcı'
                         const initials = name.slice(0, 2).toUpperCase()
                         return (
-                          <View key={'p_' + item.user_id} style={styles.attendeeRow}>
+                          <View key={'p_' + item.user_id} style={styles.pendingCard}>
                             <TouchableOpacity
-                              style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}
+                              style={styles.pendingPerson}
                               onPress={() => { setShowAttendees(false); router.push(`/user/${item.user_id}`) }}
                               activeOpacity={0.7}
                             >
@@ -535,21 +582,26 @@ export default function EventDetailScreen() {
                                   <Text style={styles.attendeeUsername}>@{profile.username}</Text>
                                 )}
                               </View>
+                              <View style={styles.pendingBadge}>
+                                <Text style={styles.pendingBadgeText}>Bekliyor</Text>
+                              </View>
                             </TouchableOpacity>
                             <View style={styles.pendingActions}>
                               <TouchableOpacity
                                 style={styles.approveBtn}
                                 onPress={() => handleApprove(item.user_id)}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                activeOpacity={0.8}
                               >
-                                <Ionicons name="checkmark" size={16} color={colors.accent} />
+                                <Ionicons name="checkmark" size={15} color="#fff" />
+                                <Text style={styles.approveBtnText}>Kabul Et</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 style={styles.rejectBtn}
                                 onPress={() => handleReject(item.user_id)}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                activeOpacity={0.8}
                               >
-                                <Ionicons name="close" size={16} color={colors.error} />
+                                <Ionicons name="close" size={15} color={colors.error} />
+                                <Text style={styles.rejectBtnText}>Reddet</Text>
                               </TouchableOpacity>
                             </View>
                           </View>
@@ -660,13 +712,16 @@ export default function EventDetailScreen() {
             <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
             <Text style={styles.metaText}>{formattedDate}</Text>
           </View>
-          {event.address && (
+          {(event.address || event.latitude != null) && (
             <>
               <View style={styles.divider} />
-              <View style={styles.metaRow}>
-                <Ionicons name="location-outline" size={16} color={colors.textSecondary} />
-                <Text style={styles.metaText}>{event.address}</Text>
-              </View>
+              <TouchableOpacity style={styles.metaRow} onPress={openInMaps} activeOpacity={0.7}>
+                <Ionicons name="location-outline" size={16} color={colors.accent} />
+                <Text style={[styles.metaText, { color: colors.accent, flex: 1 }]} numberOfLines={2}>
+                  {event.address ?? 'Haritada göster'}
+                </Text>
+                <Ionicons name="navigate-outline" size={14} color={colors.accent} />
+              </TouchableOpacity>
             </>
           )}
           <View style={styles.divider} />
