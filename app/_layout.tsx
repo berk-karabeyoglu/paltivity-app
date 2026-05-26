@@ -25,6 +25,9 @@ function RootLayoutInner() {
 
   useEffect(() => {
     if (Platform.OS !== 'android') return
+    // overlay-swipe: klavye açılıp kapanırken nav bar içeriği push etmez,
+    // üzerine overlay atar → klavye dismiss sonrası beyaz bar sorunu ortadan kalkar
+    NavigationBar.setBehaviorAsync('overlay-swipe')
     NavigationBar.setVisibilityAsync('hidden')
   }, [])
 

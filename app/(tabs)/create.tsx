@@ -5,7 +5,7 @@ import {
   Animated, Easing, KeyboardAvoidingView, Keyboard,
 } from 'react-native'
 import MapView, { Marker, MapPressEvent, Region } from 'react-native-maps'
-import DateTimePicker from '@react-native-community/datetimepicker'
+import AppDateTimePicker from '../../components/ui/AppDateTimePicker'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { supabase } from '../../lib/supabase'
@@ -17,7 +17,7 @@ import { CATEGORIES } from '../../constants/categories'
 import EmojiPicker from '../../components/ui/EmojiPicker'
 
 type Coords = { latitude: number; longitude: number }
-type PickerMode = 'date' | 'time'
+type PickerMode = 'date' | 'time' // openPicker arg
 
 const DEFAULT_REGION: Region = {
   latitude: 41.0082, longitude: 28.9784,
@@ -74,21 +74,6 @@ function createStyles(c: ColorTheme) {
       borderRadius: 12, padding: 14,
     },
     dateButtonText: { fontSize: 14, color: c.textPrimary, fontWeight: '500' },
-    modalOverlay: {
-      flex: 1, justifyContent: 'flex-end',
-      backgroundColor: 'rgba(0,0,0,0.5)',
-    },
-    modalCard: {
-      backgroundColor: c.surface,
-      borderTopLeftRadius: 24, borderTopRightRadius: 24,
-      paddingBottom: 40,
-    },
-    modalHeader: {
-      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-      padding: 20, borderBottomWidth: 1, borderBottomColor: c.border,
-    },
-    modalTitle: { fontSize: 16, fontWeight: '700', color: c.textPrimary },
-    modalDone: { fontSize: 16, fontWeight: '700', color: c.accent },
     categories: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     categoryChip: {
       borderWidth: 1, borderColor: c.border, borderRadius: 20,
@@ -177,20 +162,18 @@ export default function CreateScreen() {
   const fullscreenMapRef = useRef<MapView>(null)
   const { particles, fire } = useConfetti()
   const [showPicker, setShowPicker] = useState(false)
-  const [pickerMode, setPickerMode] = useState<PickerMode>('date')
+  const [pickerInitialStep, setPickerInitialStep] = useState<PickerMode>('date')
   const [dateConfirmed, setDateConfirmed] = useState(true)
 
-  const openDatePicker = (mode: PickerMode) => {
-    setPickerMode(mode)
+  const openPicker = (step: PickerMode) => {
+    setPickerInitialStep(step)
     setShowPicker(true)
   }
 
-  const handleDateChange = (_: any, selected?: Date) => {
-    if (Platform.OS === 'android') setShowPicker(false)
-    if (selected) {
-      setStartsAt(selected)
-      setDateConfirmed(true)
-    }
+  const handlePickerConfirm = (date: Date) => {
+    setStartsAt(date)
+    setDateConfirmed(true)
+    setShowPicker(false)
   }
 
   const formatDate = (date: Date) =>
@@ -359,7 +342,7 @@ export default function CreateScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={0}
     >
     <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -388,13 +371,13 @@ export default function CreateScreen() {
 
       <Text style={styles.label}>Tarih ve Saat *</Text>
       <View style={styles.dateRow}>
-        <TouchableOpacity style={styles.dateButton} onPress={() => openDatePicker('date')}>
+        <TouchableOpacity style={styles.dateButton} onPress={() => openPicker('date')}>
           <Ionicons name="calendar-outline" size={16} color={colors.accent} />
           <Text style={[styles.dateButtonText, !dateConfirmed && { color: colors.textSecondary }]}>
             {dateConfirmed ? formatDate(startsAt) : 'Tarih seç'}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.dateButton} onPress={() => openDatePicker('time')}>
+        <TouchableOpacity style={styles.dateButton} onPress={() => openPicker('time')}>
           <Ionicons name="time-outline" size={16} color={colors.accent} />
           <Text style={[styles.dateButtonText, !dateConfirmed && { color: colors.textSecondary }]}>
             {dateConfirmed ? formatTime(startsAt) : 'Saat seç'}
@@ -402,43 +385,14 @@ export default function CreateScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* iOS: modal picker */}
-      {Platform.OS === 'ios' && (
-        <Modal transparent visible={showPicker} animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalCard}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>
-                  {pickerMode === 'date' ? 'Tarih Seç' : 'Saat Seç'}
-                </Text>
-                <TouchableOpacity onPress={() => setShowPicker(false)}>
-                  <Text style={styles.modalDone}>Tamam</Text>
-                </TouchableOpacity>
-              </View>
-              <DateTimePicker
-                value={startsAt}
-                mode={pickerMode}
-                display="spinner"
-                onChange={handleDateChange}
-                minimumDate={new Date()}
-                locale="tr-TR"
-                textColor={colors.textPrimary}
-              />
-            </View>
-          </View>
-        </Modal>
-      )}
-
-      {/* Android: inline picker */}
-      {Platform.OS === 'android' && showPicker && (
-        <DateTimePicker
-          value={startsAt}
-          mode={pickerMode}
-          display="default"
-          onChange={handleDateChange}
-          minimumDate={new Date()}
-        />
-      )}
+      <AppDateTimePicker
+        visible={showPicker}
+        value={startsAt}
+        initialStep={pickerInitialStep}
+        minimumDate={new Date()}
+        onConfirm={handlePickerConfirm}
+        onCancel={() => setShowPicker(false)}
+      />
 
       <View style={styles.row}>
         <View style={styles.rowLeft}>

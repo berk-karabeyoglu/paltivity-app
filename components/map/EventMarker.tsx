@@ -16,7 +16,8 @@ function EventMarker({ event, onSelect }: Props) {
   const glowAnim = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
-    const t = setTimeout(() => setTracksViewChanges(false), 500)
+    // Android emoji font yüklemesini beklemek için iOS'tan daha uzun süre
+    const t = setTimeout(() => setTracksViewChanges(false), Platform.OS === 'android' ? 1000 : 500)
     return () => clearTimeout(t)
   }, [])
 
@@ -35,24 +36,38 @@ function EventMarker({ event, onSelect }: Props) {
       <Marker
         identifier={event.id}
         coordinate={{ latitude: event.latitude, longitude: event.longitude }}
-        anchor={{ x: 0.5, y: 0.5 }}
+        anchor={{ x: 0.5, y: 1 }}
         onPress={handlePress}
         tracksViewChanges={tracksViewChanges}
       >
-        <View collapsable={false} style={{ alignItems: 'center' }}>
-          <Text style={{
-            fontSize: 36,
-            includeFontPadding: false,
-            textShadowColor: 'rgba(0,0,0,0.4)',
-            textShadowOffset: { width: 0, height: 2 },
-            textShadowRadius: 4,
-          }}>
-            {emoji}
-          </Text>
+        {/*
+          New Architecture (Fabric) breaks custom View markers on Android —
+          renders as clipped quarter-circles. Fixed by setting newArchEnabled: false
+          in app.json. With Old Architecture, this layout renders correctly.
+        */}
+        <View collapsable={false} style={{ width: 56, height: 66, alignItems: 'center' }}>
           <View style={{
-            width: 8, height: 8, borderRadius: 4,
+            width: 56, height: 56,
+            borderRadius: 16,
             backgroundColor: colors.accent,
-            marginTop: 2,
+            borderWidth: 3,
+            borderColor: '#fff',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <Text style={{ fontSize: 28, includeFontPadding: false, lineHeight: 34 }}>
+              {emoji}
+            </Text>
+          </View>
+          <View style={{
+            width: 0, height: 0,
+            borderStyle: 'solid',
+            borderLeftWidth: 9,
+            borderRightWidth: 9,
+            borderTopWidth: 10,
+            borderLeftColor: 'transparent',
+            borderRightColor: 'transparent',
+            borderTopColor: colors.accent,
           }} />
         </View>
       </Marker>
