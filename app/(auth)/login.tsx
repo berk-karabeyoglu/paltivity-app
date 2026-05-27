@@ -1,3 +1,4 @@
+import { toTurkishError } from '../../lib/utils/errorMessage'
 import { useState, useEffect, useRef } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity,
@@ -5,10 +6,15 @@ import {
   Platform, Dimensions, Animated, Easing, ScrollView, Pressable,
 } from 'react-native'
 import { Link } from 'expo-router'
+import { Image } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
 import { useFonts, Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold } from '@expo-google-fonts/poppins'
 import { useAuth } from '../../lib/hooks/useAuth'
+import { supabase } from '../../lib/supabase'
+import * as WebBrowser from 'expo-web-browser'
+
+WebBrowser.maybeCompleteAuthSession()
 
 const { width, height } = Dimensions.get('window')
 
@@ -64,7 +70,7 @@ function GradientButton({ onPress, label, loading }: { onPress: () => void; labe
   )
 }
 
-function SocialBtn({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
+function SocialBtn({ icon, label, onPress }: { icon: React.ReactNode; label: string; onPress: () => void }) {
   const scale = useRef(new Animated.Value(1)).current
   return (
     <Animated.View style={[styles.socialBtn, { transform: [{ scale }] }]}>
@@ -74,7 +80,7 @@ function SocialBtn({ icon, label, onPress }: { icon: string; label: string; onPr
         onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true, damping: 10, stiffness: 200 }).start()}
         onPress={onPress}
       >
-        <Text style={styles.socialIcon}>{icon}</Text>
+        {icon}
         <Text style={styles.socialLabel}>{label}</Text>
       </Pressable>
     </Animated.View>
@@ -105,9 +111,49 @@ export default function LoginScreen() {
     try {
       await signIn(email, password)
     } catch (err: any) {
-      Alert.alert('Giriş hatası', err.message)
+      Alert.alert('Giriş hatası', toTurkishError(err.message))
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleGoogleSignIn = async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: 'paltivity://auth/callback',
+        skipBrowserRedirect: true,
+      },
+    })
+    if (error || !data?.url) {
+      Alert.alert('Hata', 'Google ile giriş başlatılamadı.')
+      return
+    }
+    const result = await WebBrowser.openAuthSessionAsync(data.url, 'paltivity://auth/callback')
+    if (result.type === 'success' && result.url) {
+      const match = result.url.match(/[?&]code=([^&\s]+)/)
+      const code = match?.[1]
+      if (code) {
+        const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code)
+        if (sessionError) Alert.alert('Hata', 'Google ile giriş tamamlanamadı.')
+      }
+    }
+  }
+
+  const handleForgotPassword = async () => {
+    const target = email.trim()
+    if (!target) {
+      Alert.alert('Şifremi Unuttum', 'Önce email adresini gir, sonra tekrar dene.')
+      return
+    }
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(target, {
+        redirectTo: 'paltivity://reset-password',
+      })
+      if (error) throw error
+      Alert.alert('Mail gönderildi', `${target} adresine şifre sıfırlama bağlantısı gönderdik.`)
+    } catch (e: any) {
+      Alert.alert('Hata', toTurkishError(e?.message))
     }
   }
 
@@ -125,15 +171,13 @@ export default function LoginScreen() {
         <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
 
           <View style={styles.logoSection}>
-            <LinearGradient colors={[C.violet, C.pink]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.logoIcon}>
-              <Text style={styles.logoEmoji}>⚡</Text>
-            </LinearGradient>
+            <Image source={require('../../assets/icon.png')} style={styles.logoIcon} />
             <Text style={[styles.logoText, { fontFamily: f700 }]}>paltivity</Text>
             <Text style={[styles.tagline, { fontFamily: f400 }]}>Etrafındaki aktiviteleri keşfet</Text>
           </View>
 
           <View style={styles.card}>
-            <Text style={[styles.cardTitle, { fontFamily: f700 }]}>Hoş geldin 👋</Text>
+            <Text style={[styles.cardTitle, { fontFamily: f700 }]}>Hoş geldin</Text>
             <Text style={[styles.cardSub, { fontFamily: f400 }]}>Devam etmek için giriş yap</Text>
 
             <View style={styles.inputRow}>
@@ -164,6 +208,10 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
+            <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotBtn}>
+              <Text style={[styles.forgotText, { fontFamily: f400 }]}>Şifremi unuttum</Text>
+            </TouchableOpacity>
+
             <GradientButton onPress={handleLogin} label="Giriş Yap" loading={loading} />
 
             <View style={styles.divRow}>
@@ -173,8 +221,8 @@ export default function LoginScreen() {
             </View>
 
             <View style={styles.socialRow}>
-              <SocialBtn icon="🍎" label="Apple" onPress={() => Alert.alert('Yakında', 'Apple ile giriş yakında!')} />
-              <SocialBtn icon="G" label="Google" onPress={() => Alert.alert('Yakında', 'Google ile giriş yakında!')} />
+              <SocialBtn icon={<Ionicons name="logo-apple" size={20} color={C.text} />} label="Apple" onPress={() => Alert.alert('Yakında', 'Apple ile giriş yakında!')} />
+              <SocialBtn icon={<Text style={styles.socialIcon}>G</Text>} label="Google" onPress={handleGoogleSignIn} />
             </View>
           </View>
 
@@ -197,8 +245,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
   scroll: { flexGrow: 1, padding: 24, paddingTop: 72, paddingBottom: 48 },
   logoSection: { alignItems: 'center', marginBottom: 40 },
-  logoIcon: { width: 68, height: 68, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: 18 },
-  logoEmoji: { fontSize: 32 },
+  logoIcon: { width: 68, height: 68, borderRadius: 22, marginBottom: 18 },
   logoText: { fontSize: 38, fontWeight: '800', color: C.text, letterSpacing: -1.5, marginBottom: 8 },
   tagline: { fontSize: 14, color: C.muted },
   card: {
@@ -230,4 +277,6 @@ const styles = StyleSheet.create({
   footer: { alignItems: 'center', paddingVertical: 8 },
   footerText: { color: C.muted, fontSize: 14 },
   footerAccent: { color: C.violet },
+  forgotBtn: { alignSelf: 'flex-end', paddingVertical: 2 },
+  forgotText: { fontSize: 13, color: C.violet },
 })

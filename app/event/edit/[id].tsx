@@ -1,3 +1,4 @@
+import { toTurkishError } from '../../../lib/utils/errorMessage'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity,
@@ -305,7 +306,7 @@ export default function EditEventScreen() {
       signalEventRefresh()
       setTimeout(() => router.back(), 900)
     } catch (err: any) {
-      Alert.alert('Hata', err.message)
+      Alert.alert('Hata', toTurkishError(err.message))
     } finally {
       setSaving(false)
     }

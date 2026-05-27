@@ -1,4 +1,5 @@
-import { useState, useRef, useMemo, useCallback } from 'react'
+import { toTurkishError } from '../../lib/utils/errorMessage'
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, Alert, ActivityIndicator, Platform, Modal,
@@ -14,6 +15,7 @@ import { useColors } from '../../lib/hooks/useColors'
 import { ColorTheme } from '../../constants/colors'
 import { useConfetti } from '../../lib/hooks/useConfetti'
 import { CATEGORIES } from '../../constants/categories'
+import * as Location from 'expo-location'
 import EmojiPicker from '../../components/ui/EmojiPicker'
 
 type Coords = { latitude: number; longitude: number }
@@ -164,6 +166,20 @@ export default function CreateScreen() {
   const [showPicker, setShowPicker] = useState(false)
   const [pickerInitialStep, setPickerInitialStep] = useState<PickerMode>('date')
   const [dateConfirmed, setDateConfirmed] = useState(true)
+
+  useEffect(() => {
+    Location.getForegroundPermissionsAsync().then(({ status }) => {
+      if (status !== 'granted') return
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).then(loc => {
+        setRegion({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        })
+      }).catch(() => {})
+    })
+  }, [])
 
   const openPicker = (step: PickerMode) => {
     setPickerInitialStep(step)
@@ -335,7 +351,7 @@ export default function CreateScreen() {
     } catch (err: any) {
       progressAnim.setValue(0)
       setCreatePhase('idle')
-      Alert.alert('Hata', err.message)
+      Alert.alert('Hata', toTurkishError(err.message))
     }
   }
 
@@ -486,6 +502,8 @@ export default function CreateScreen() {
             region={region}
             onRegionChangeComplete={setRegion}
             onPress={handleMapPress}
+            showsUserLocation
+            showsMyLocationButton={false}
           >
             {coords && <Marker coordinate={coords} />}
           </MapView>
@@ -512,6 +530,8 @@ export default function CreateScreen() {
             style={styles.fullscreenMap}
             region={region}
             onRegionChangeComplete={setRegion}
+            showsUserLocation
+            showsMyLocationButton={false}
             onPress={(e) => {
               try {
                 const coord = e?.nativeEvent?.coordinate

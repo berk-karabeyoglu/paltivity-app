@@ -1,3 +1,4 @@
+import { toTurkishError } from '../../lib/utils/errorMessage'
 import { useState, useEffect, useRef } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity,
@@ -5,10 +6,15 @@ import {
   Platform, Dimensions, Animated, Easing, ScrollView, Pressable,
 } from 'react-native'
 import { Link } from 'expo-router'
+import { Image } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
 import { useFonts, Poppins_400Regular, Poppins_600SemiBold, Poppins_700Bold } from '@expo-google-fonts/poppins'
 import { useAuth } from '../../lib/hooks/useAuth'
+import { supabase } from '../../lib/supabase'
+import * as WebBrowser from 'expo-web-browser'
+
+WebBrowser.maybeCompleteAuthSession()
 
 const { width, height } = Dimensions.get('window')
 
@@ -90,6 +96,22 @@ function GradientButton({ onPress, label, loading }: { onPress: () => void; labe
   )
 }
 
+function pwStrength(pw: string): { score: number; label: string; color: string } {
+  if (pw.length === 0) return { score: 0, label: '', color: '#CBD5E1' }
+  let s = 0
+  if (pw.length >= 8) s++
+  if (/[A-Z]/.test(pw)) s++
+  if (/[0-9]/.test(pw)) s++
+  if (/[^A-Za-z0-9]/.test(pw)) s++
+  const map = [
+    { score: 1, label: 'Çok zayıf', color: '#EF4444' },
+    { score: 2, label: 'Zayıf', color: '#F97316' },
+    { score: 3, label: 'Orta', color: '#EAB308' },
+    { score: 4, label: 'Güçlü', color: '#22C55E' },
+  ]
+  return map[s - 1] ?? { score: 0, label: '', color: '#CBD5E1' }
+}
+
 export default function RegisterScreen() {
   const { signUp } = useAuth()
   const [email, setEmail] = useState('')
@@ -111,14 +133,44 @@ export default function RegisterScreen() {
     ]).start()
   }, [])
 
+  const pw = pwStrength(password)
+  const pwRules = [
+    { ok: password.length >= 8, text: 'En az 8 karakter' },
+    { ok: /[A-Z]/.test(password), text: 'Büyük harf' },
+    { ok: /[0-9]/.test(password), text: 'Rakam' },
+  ]
+
+  const handleGoogleSignIn = async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: 'paltivity://auth/callback',
+        skipBrowserRedirect: true,
+      },
+    })
+    if (error || !data?.url) {
+      Alert.alert('Hata', 'Google ile giriş başlatılamadı.')
+      return
+    }
+    const result = await WebBrowser.openAuthSessionAsync(data.url, 'paltivity://auth/callback')
+    if (result.type === 'success' && result.url) {
+      const match = result.url.match(/[?&]code=([^&\s]+)/)
+      const code = match?.[1]
+      if (code) {
+        const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code)
+        if (sessionError) Alert.alert('Hata', 'Google ile giriş tamamlanamadı.')
+      }
+    }
+  }
+
   const handleRegister = async () => {
     if (!email || !password || !username || !fullName) return Alert.alert('Hata', 'Tüm zorunlu alanları doldur')
-    if (password.length < 6) return Alert.alert('Hata', 'Şifre en az 6 karakter olmalı')
+    if (password.length < 8) return Alert.alert('Hata', 'Şifre en az 8 karakter olmalı')
     setLoading(true)
     try {
       await signUp(email, password, username, fullName, gender)
     } catch (err: any) {
-      Alert.alert('Kayıt hatası', err.message)
+      Alert.alert('Kayıt hatası', toTurkishError(err.message))
     } finally {
       setLoading(false)
     }
@@ -143,31 +195,66 @@ export default function RegisterScreen() {
                 <Ionicons name="chevron-back" size={20} color={C.muted} />
               </TouchableOpacity>
             </Link>
-            <LinearGradient colors={[C.violet, C.pink]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.logoIcon}>
-              <Text style={styles.logoEmoji}>⚡</Text>
-            </LinearGradient>
+            <Image source={require('../../assets/icon.png')} style={styles.logoIcon} />
           </View>
 
-          <Text style={[styles.title, { fontFamily: f700 }]}>Hesap oluştur 🚀</Text>
+          <Text style={[styles.title, { fontFamily: f700 }]}>Hesap oluştur</Text>
           <Text style={[styles.subtitle, { fontFamily: f400 }]}>Aktivite dünyasına katıl</Text>
 
           <View style={styles.card}>
             <InputRow icon="person-outline" placeholder="Ad Soyad *" value={fullName} onChangeText={setFullName} fontFamily={f400} />
             <InputRow icon="at-outline" placeholder="Kullanıcı adı *" value={username} onChangeText={setUsername} autoCapitalize="none" fontFamily={f400} />
             <InputRow icon="mail-outline" placeholder="Email *" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" fontFamily={f400} />
-            <InputRow
-              icon="lock-closed-outline"
-              placeholder="Şifre *"
-              value={password}
-              onChangeText={setPassword}
-              secure={!showPass}
-              fontFamily={f400}
-              right={
+            <View>
+              <View style={styles.inputRow}>
+                <Ionicons name="lock-closed-outline" size={18} color={C.muted} style={styles.inputIcon} />
+                <TextInput
+                  style={[styles.input, { fontFamily: f400, flex: 1 }]}
+                  placeholder="Şifre *"
+                  placeholderTextColor={C.muted}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPass}
+                  autoCapitalize="none"
+                />
                 <TouchableOpacity onPress={() => setShowPass(p => !p)} style={styles.eyeBtn}>
                   <Ionicons name={showPass ? 'eye-outline' : 'eye-off-outline'} size={18} color={C.muted} />
                 </TouchableOpacity>
-              }
-            />
+              </View>
+
+              {password.length > 0 && (
+                <View style={{ marginTop: 8, gap: 4 }}>
+                  <View style={{ flexDirection: 'row', gap: 4 }}>
+                    {[0, 1, 2, 3].map(i => (
+                      <View
+                        key={i}
+                        style={{
+                          flex: 1, height: 3, borderRadius: 2,
+                          backgroundColor: i < pw.score ? pw.color : 'rgba(255,255,255,0.1)',
+                        }}
+                      />
+                    ))}
+                  </View>
+                  {pw.label ? (
+                    <Text style={{ fontSize: 11, color: pw.color, fontFamily: f400 }}>{pw.label}</Text>
+                  ) : null}
+                  <View style={{ gap: 3, marginTop: 2 }}>
+                    {pwRules.map(r => (
+                      <View key={r.text} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons
+                          name={r.ok ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={12}
+                          color={r.ok ? '#22C55E' : C.muted}
+                        />
+                        <Text style={{ fontSize: 11, color: r.ok ? C.text : C.muted, fontFamily: f400 }}>
+                          {r.text}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+            </View>
 
             <Text style={[styles.sectionLabel, { fontFamily: f600 }]}>Cinsiyet</Text>
             <View style={styles.genderRow}>
@@ -218,8 +305,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.09)',
     alignItems: 'center', justifyContent: 'center',
   },
-  logoIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  logoEmoji: { fontSize: 20 },
+  logoIcon: { width: 40, height: 40, borderRadius: 12 },
   title: { fontSize: 30, fontWeight: '800', color: C.text, letterSpacing: -1, marginBottom: 6 },
   subtitle: { fontSize: 14, color: C.muted, marginBottom: 28 },
   card: {

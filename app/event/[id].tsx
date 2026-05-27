@@ -1,3 +1,4 @@
+import { toTurkishError } from '../../lib/utils/errorMessage'
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import {
   View, Text, StyleSheet, ScrollView,
@@ -256,7 +257,7 @@ export default function EventDetailScreen() {
       } catch (err: any) {
         if (!mounted.current) return
         if (!err.message?.includes('JSON') && !err.code?.includes('PGRST116')) {
-          Alert.alert('Hata', err.message)
+          Alert.alert('Hata', toTurkishError(err.message))
         }
       } finally {
         if (mounted.current) setLoading(false)
@@ -361,7 +362,7 @@ export default function EventDetailScreen() {
     } catch (err: any) {
       progressAnim.setValue(0)
       setJoinPhase('idle')
-      Alert.alert('Hata', err.message)
+      Alert.alert('Hata', toTurkishError(err.message))
     }
   }
 
@@ -490,7 +491,7 @@ export default function EventDetailScreen() {
       if (error) throw error
       setEvent(prev => prev ? { ...prev, is_attending: false, attendee_count: Math.max(0, prev.attendee_count - 1) } : prev)
     } catch (err: any) {
-      Alert.alert('Hata', err.message)
+      Alert.alert('Hata', toTurkishError(err.message))
     } finally {
       setJoining(false)
     }

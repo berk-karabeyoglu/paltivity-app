@@ -1,3 +1,4 @@
+import { toTurkishError } from '../../../lib/utils/errorMessage'
 import { useState, useCallback, useMemo } from 'react'
 import { useFocusEffect, router } from 'expo-router'
 import {
@@ -172,7 +173,7 @@ export default function ProfileScreen() {
             )
           }
         } catch (err: any) {
-          Alert.alert('Hata', err.message)
+          Alert.alert('Hata', toTurkishError(err.message))
         } finally {
           if (active) setLoading(false)
         }
@@ -199,7 +200,7 @@ export default function ProfileScreen() {
               if (error) throw error
               setCreatedEvents(prev => prev.filter(e => e.id !== event.id))
             } catch (err: any) {
-              Alert.alert('Hata', err.message)
+              Alert.alert('Hata', toTurkishError(err.message))
             }
           },
         },

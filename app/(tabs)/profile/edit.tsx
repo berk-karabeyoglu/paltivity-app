@@ -1,3 +1,4 @@
+import { toTurkishError } from '../../../lib/utils/errorMessage'
 import { useEffect, useState, useMemo } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity,
@@ -165,7 +166,7 @@ export default function EditProfileScreen() {
       const { data } = supabase.storage.from('avatars').getPublicUrl(path)
       return `${data.publicUrl}?t=${Date.now()}`
     } catch (err: any) {
-      Alert.alert('Fotoğraf yüklenemedi', err.message)
+      Alert.alert('Fotoğraf yüklenemedi', toTurkishError(err.message))
       return avatarUrl
     } finally {
       setUploadingPhoto(false)
@@ -190,7 +191,7 @@ export default function EditProfileScreen() {
       if (error) throw error
       router.back()
     } catch (err: any) {
-      Alert.alert('Hata', err.message)
+      Alert.alert('Hata', toTurkishError(err.message))
     } finally {
       setSaving(false)
     }

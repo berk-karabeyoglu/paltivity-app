@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Stack, router } from 'expo-router'
 import * as Linking from 'expo-linking'
 import { useAuth } from '../lib/hooks/useAuth'
@@ -99,7 +99,13 @@ function RootLayoutInner() {
   useEffect(() => {
     const handleUrl = async (url: string) => {
       if (url.includes('code=')) {
-        await supabase.auth.exchangeCodeForSession(url)
+        const match = url.match(/[?&]code=([^&\s]+)/)
+        const code = match?.[1]
+        if (!code) return
+        const { error } = await supabase.auth.exchangeCodeForSession(code)
+        if (error) {
+          Alert.alert('Link Geçersiz', 'Şifre sıfırlama linki süresi dolmuş veya zaten kullanılmış. Yeni bir link talep et.')
+        }
       }
     }
 
@@ -111,13 +117,44 @@ function RootLayoutInner() {
     return () => subscription.remove()
   }, [])
 
+  const isRecoveryMode = useRef(false)
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        isRecoveryMode.current = true
+      }
+      if (event === 'USER_UPDATED') {
+        isRecoveryMode.current = false
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const prevSessionRef = useRef<typeof session | undefined>(undefined)
   useEffect(() => {
     if (loading) return
-    if (session) {
-      router.replace('/(tabs)/map')
-    } else {
-      router.replace('/(auth)/login')
+    const prev = prevSessionRef.current
+    prevSessionRef.current = session  // her zaman güncelle
+
+    if (isRecoveryMode.current) return  // recovery modda navigate etme
+
+    // İlk yükleme
+    if (prev === undefined) {
+      router.replace(session ? '/(tabs)/map' : '/(auth)/login')
+      return
     }
+    // Giriş yapıldı (null → session)
+    if (!prev && session) {
+      router.replace('/(tabs)/map')
+      return
+    }
+    // Çıkış yapıldı (session → null)
+    if (prev && !session) {
+      router.replace('/(auth)/login')
+      return
+    }
+    // Re-auth (session → session): bir şey yapma
   }, [session, loading])
 
   if (loading) {
@@ -154,6 +191,8 @@ function RootLayoutInner() {
         <Stack.Screen name="user/[id]" />
         <Stack.Screen name="chat/[id]" />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="change-password" />
+        <Stack.Screen name="reset-password" />
         <Stack.Screen name="index" />
       </Stack>
     </UnreadContext.Provider>

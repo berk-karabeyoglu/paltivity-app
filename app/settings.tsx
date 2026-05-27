@@ -1,3 +1,4 @@
+import { toTurkishError } from '../lib/utils/errorMessage'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   View, Text, StyleSheet, ScrollView,
@@ -146,7 +147,7 @@ export default function SettingsScreen() {
       if (error) throw error
     } catch (err: any) {
       setIsPrivate(!value)
-      Alert.alert('Hata', err.message)
+      Alert.alert('Hata', toTurkishError(err.message))
     } finally {
       setSavingPrivacy(false)
     }
@@ -174,7 +175,7 @@ export default function SettingsScreen() {
               if (error) throw error
               await supabase.auth.signOut()
             } catch (e: any) {
-              Alert.alert('Hata', e?.message ?? 'Hesap silinemedi, tekrar dene.')
+              Alert.alert('Hata', toTurkishError(e?.message))
             }
           },
         },
@@ -265,16 +266,8 @@ export default function SettingsScreen() {
             icon="key-outline"
             iconBg="#8B5CF6"
             title="Şifreyi Değiştir"
-            sub="Yakında"
-            onPress={() => Alert.alert('Yakında', 'Bu özellik yakında eklenecek.')}
-          />
-          <Row
-            icon="mail-outline"
-            iconBg="#0EA5E9"
-            title="E-postayı Değiştir"
-            sub="Yakında"
-            onPress={() => Alert.alert('Yakında', 'Bu özellik yakında eklenecek.')}
             isLast
+            onPress={() => router.push('/change-password')}
           />
         </View>
       </View>
