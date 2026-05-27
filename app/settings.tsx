@@ -162,10 +162,22 @@ export default function SettingsScreen() {
   const handleDeleteAccount = () => {
     Alert.alert(
       'Hesabı Sil',
-      'Bu işlem geri alınamaz. Tüm verilerin silinecek.',
+      'Bu işlem geri alınamaz. Tüm verilerin kalıcı olarak silinecek.',
       [
         { text: 'İptal', style: 'cancel' },
-        { text: 'Sil', style: 'destructive', onPress: () => Alert.alert('Yakında', 'Bu özellik yakında eklenecek.') },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase.rpc('delete_user_account')
+              if (error) throw error
+              await supabase.auth.signOut()
+            } catch (e: any) {
+              Alert.alert('Hata', e?.message ?? 'Hesap silinemedi, tekrar dene.')
+            }
+          },
+        },
       ]
     )
   }
