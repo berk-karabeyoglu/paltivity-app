@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.paltivity.app"
+      "bundleIdentifier": "com.paltivity.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "config": {
@@ -40,6 +43,12 @@
       "expo-font",
       "@react-native-community/datetimepicker",
       "expo-web-browser"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "87b91044-7325-48dc-bb22-4dda5585ad64"
+      }
+    }
   }
 }
