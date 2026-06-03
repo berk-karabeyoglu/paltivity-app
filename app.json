@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.paltivityapp"
+      "bundleIdentifier": "com.paltivity.app"
     },
     "android": {
       "config": {
@@ -30,7 +30,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.paltivityapp"
+      "package": "com.paltivity.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
