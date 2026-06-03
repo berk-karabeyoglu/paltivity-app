@@ -14,7 +14,6 @@ import { useAuth } from '../../lib/hooks/useAuth'
 import { useColors } from '../../lib/hooks/useColors'
 import { ColorTheme } from '../../constants/colors'
 import { useConfetti } from '../../lib/hooks/useConfetti'
-import { CATEGORIES } from '../../constants/categories'
 import * as Location from 'expo-location'
 import EmojiPicker from '../../components/ui/EmojiPicker'
 
@@ -76,14 +75,6 @@ function createStyles(c: ColorTheme) {
       borderRadius: 12, padding: 14,
     },
     dateButtonText: { fontSize: 14, color: c.textPrimary, fontWeight: '500' },
-    categories: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    categoryChip: {
-      borderWidth: 1, borderColor: c.border, borderRadius: 20,
-      paddingHorizontal: 12, paddingVertical: 6, backgroundColor: c.surface,
-    },
-    categoryChipSelected: { backgroundColor: c.accent + '20', borderColor: c.accent },
-    categoryText: { fontSize: 13, color: c.textSecondary },
-    categoryTextSelected: { color: c.accent, fontWeight: '600' },
     row: { flexDirection: 'row', gap: 10, alignItems: 'flex-end' },
     rowLeft: { flex: 1 },
     rowRight: { flex: 1, marginTop: 16 },

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "name": "paltivity-app",
     "slug": "paltivity-app",
     "scheme": "paltivity",
