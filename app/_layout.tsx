@@ -169,9 +169,9 @@ function RootLayoutInner() {
       }
       return
     }
-    // Giriş yapıldı (null → session) — onboarding sadece ilk açılışta gösterilir
+    // Giriş yapıldı (null → session)
     if (!prev && session) {
-      router.replace('/(tabs)/map')
+      router.replace(hasSeenOnboardingRef.current ? '/(tabs)/map' : '/onboarding')
       return
     }
     // Çıkış yapıldı (session → null)

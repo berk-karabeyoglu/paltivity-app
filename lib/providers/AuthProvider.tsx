@@ -20,7 +20,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  // K2: Profil update başarısız olursa hata fırlat (broken state önlemi)
   const signUp = useCallback(async (
     email: string,
     password: string,
@@ -28,6 +27,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fullName: string,
     gender: string | null,
   ) => {
+    // Kullanıcı adı benzersizlik kontrolü
+    const { data: existing } = await supabase
+      .from('profiles')
+      .select('username')
+      .eq('username', username)
+      .maybeSingle()
+
+    if (existing) throw new Error('Bu kullanıcı adı zaten kullanılıyor.')
+
     const { data, error } = await supabase.auth.signUp({ email, password })
     if (error) throw error
 
@@ -38,6 +46,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .eq('id', data.user.id)
 
       if (profileError) {
+        // Profil güncellenemedi — session'ı temizle, kullanıcı tekrar denesin
+        await supabase.auth.signOut()
         throw new Error('Profil oluşturulamadı. Lütfen tekrar dene.')
       }
     }
