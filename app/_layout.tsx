@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Stack, router } from 'expo-router'
 import * as Linking from 'expo-linking'
 import { useAuth } from '../lib/hooks/useAuth'
@@ -22,6 +23,15 @@ function RootLayoutInner() {
   const { theme } = useTheme()
   const [unreadCount, setUnreadCount] = useState(0)
   const [toast, setToast] = useState<Toast>(null)
+  const [onboardingReady, setOnboardingReady] = useState(false)
+  const hasSeenOnboardingRef = useRef(false)
+
+  useEffect(() => {
+    AsyncStorage.getItem('paltivity:onboarding_v1').then(val => {
+      hasSeenOnboardingRef.current = !!val
+      setOnboardingReady(true)
+    })
+  }, [])
 
   useEffect(() => {
     if (Platform.OS !== 'android') return
@@ -133,7 +143,7 @@ function RootLayoutInner() {
 
   const prevSessionRef = useRef<typeof session | undefined>(undefined)
   useEffect(() => {
-    if (loading) return
+    if (loading || !onboardingReady) return
     const prev = prevSessionRef.current
     prevSessionRef.current = session  // her zaman güncelle
 
@@ -141,12 +151,16 @@ function RootLayoutInner() {
 
     // İlk yükleme
     if (prev === undefined) {
-      router.replace(session ? '/(tabs)/map' : '/(auth)/login')
+      if (session) {
+        router.replace(hasSeenOnboardingRef.current ? '/(tabs)/map' : '/onboarding')
+      } else {
+        router.replace('/(auth)/login')
+      }
       return
     }
     // Giriş yapıldı (null → session)
     if (!prev && session) {
-      router.replace('/(tabs)/map')
+      router.replace(hasSeenOnboardingRef.current ? '/(tabs)/map' : '/onboarding')
       return
     }
     // Çıkış yapıldı (session → null)
@@ -155,7 +169,7 @@ function RootLayoutInner() {
       return
     }
     // Re-auth (session → session): bir şey yapma
-  }, [session, loading])
+  }, [session, loading, onboardingReady])
 
   if (loading) {
     return (
@@ -193,6 +207,7 @@ function RootLayoutInner() {
         <Stack.Screen name="settings" />
         <Stack.Screen name="change-password" />
         <Stack.Screen name="reset-password" />
+        <Stack.Screen name="onboarding" />
         <Stack.Screen name="index" />
       </Stack>
     </UnreadContext.Provider>

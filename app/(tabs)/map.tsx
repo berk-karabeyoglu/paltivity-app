@@ -126,6 +126,45 @@ function createStyles(c: ColorTheme) {
       borderRadius: 14, paddingVertical: 13,
     },
     ctaText: { fontSize: 14, fontWeight: '700', color: '#fff', letterSpacing: 0.2 },
+    emptyPill: {
+      position: 'absolute',
+      top: Platform.OS === 'ios' ? 60 : 40,
+      alignSelf: 'center',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 24,
+      paddingVertical: 8,
+      paddingLeft: 14,
+      paddingRight: 8,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      elevation: 6,
+    },
+    emptyPillText: {
+      fontSize: 13,
+      color: c.textSecondary,
+      fontWeight: '500',
+    },
+    emptyPillBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: c.accent,
+      borderRadius: 16,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+    },
+    emptyPillBtnText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: '#fff',
+    },
     locateBtn: {
       position: 'absolute',
       right: 16,
@@ -287,6 +326,20 @@ export default function MapScreen() {
           />
         ))}
       </MapView>
+
+      {events.length === 0 && locationReady && (
+        <View style={styles.emptyPill}>
+          <Text style={styles.emptyPillText}>Yakında etkinlik yok</Text>
+          <TouchableOpacity
+            style={styles.emptyPillBtn}
+            onPress={() => router.push('/(tabs)/create')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="add" size={13} color="#fff" />
+            <Text style={styles.emptyPillBtnText}>Oluştur</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <TouchableOpacity
         style={[styles.locateBtn, { bottom: TAB_BAR_HEIGHT + 16 }]}

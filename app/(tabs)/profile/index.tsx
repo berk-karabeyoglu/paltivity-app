@@ -85,8 +85,20 @@ function createStyles(c: ColorTheme) {
       alignItems: 'center', justifyContent: 'center', marginRight: 12,
     },
     emojiText: { fontSize: 20 },
-    emptyState: { alignItems: 'center', padding: 40, gap: 12 },
-    emptyText: { color: c.textSecondary, fontSize: 14 },
+    emptyState: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 32, gap: 12 },
+    emptyText: { color: c.textSecondary, fontSize: 15, fontWeight: '600', textAlign: 'center' },
+    emptySubText: { color: c.textSecondary, fontSize: 13, textAlign: 'center', lineHeight: 18, opacity: 0.7 },
+    emptyBtn: {
+      marginTop: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: c.accent,
+      borderRadius: 12,
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+    },
+    emptyBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
     eventCard: {
       flexDirection: 'row', alignItems: 'center',
       backgroundColor: c.surface, borderRadius: 14,
@@ -274,10 +286,33 @@ export default function ProfileScreen() {
       <View style={styles.section}>
         {(activeTab === 'created' ? createdEvents : joinedEvents).length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={36} color={colors.textSecondary} />
+            <Ionicons
+              name={activeTab === 'created' ? 'calendar-outline' : 'map-outline'}
+              size={40}
+              color={colors.textSecondary}
+            />
             <Text style={styles.emptyText}>
-              {activeTab === 'created' ? 'Henüz event oluşturmadın' : 'Henüz bir evente katılmadın'}
+              {activeTab === 'created' ? 'Henüz etkinlik oluşturmadın' : 'Henüz bir etkinliğe katılmadın'}
             </Text>
+            <Text style={styles.emptySubText}>
+              {activeTab === 'created'
+                ? 'İlk etkinliğini oluştur, insanları bir araya getir.'
+                : 'Haritayı keşfet, yakınındaki etkinliklere katıl.'}
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyBtn}
+              onPress={() => router.push(activeTab === 'created' ? '/(tabs)/create' : '/(tabs)/map')}
+              activeOpacity={0.85}
+            >
+              <Ionicons
+                name={activeTab === 'created' ? 'add' : 'compass-outline'}
+                size={16}
+                color="#fff"
+              />
+              <Text style={styles.emptyBtnText}>
+                {activeTab === 'created' ? 'Etkinlik Oluştur' : 'Keşfet'}
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : (
           (activeTab === 'created' ? createdEvents : joinedEvents).map(event => (
