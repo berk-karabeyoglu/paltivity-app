@@ -4,6 +4,7 @@ const errorMap: Record<string, string> = {
   'email not confirmed': 'E-posta adresin henüz doğrulanmamış. Gelen kutunu kontrol et.',
   'user already registered': 'Bu e-posta adresi zaten kayıtlı.',
   'email already in use': 'Bu e-posta adresi zaten kullanılıyor.',
+  'database error saving new user': 'Bu e-posta adresi zaten kayıtlı.',
   'password should be at least 6 characters': 'Şifre en az 6 karakter olmalı.',
   'password should be at least 8 characters': 'Şifre en az 8 karakter olmalı.',
   'unable to validate email address: invalid format': 'Geçersiz e-posta formatı.',
