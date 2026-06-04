@@ -111,6 +111,7 @@ function RootLayoutInner() {
 
   useEffect(() => {
     const handleUrl = async (url: string) => {
+      // Şifre sıfırlama
       if (url.includes('code=')) {
         const match = url.match(/[?&]code=([^&\s]+)/)
         const code = match?.[1]
@@ -119,6 +120,13 @@ function RootLayoutInner() {
         if (error) {
           Alert.alert('Link Geçersiz', 'Şifre sıfırlama linki süresi dolmuş veya zaten kullanılmış. Yeni bir link talep et.')
         }
+        return
+      }
+
+      // Event deep link: paltivity://event/[id]
+      const eventMatch = url.match(/event\/([^/?&\s]+)/)
+      if (eventMatch?.[1]) {
+        router.push(`/event/${eventMatch[1]}`)
       }
     }
 

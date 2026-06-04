@@ -4,7 +4,7 @@ import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, ActivityIndicator, Alert,
   Animated, Easing, Modal, FlatList, Image,
-  Linking, Platform,
+  Linking, Platform, Share,
 } from 'react-native'
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router'
 import { consumeEventRefresh } from '../../lib/eventRefreshSignal'
@@ -522,6 +522,17 @@ export default function EventDetailScreen() {
 
   const isCreator = event.creator_id === user?.id
   const isFull = event.max_attendees !== null && event.attendee_count >= event.max_attendees
+
+  const handleShare = async () => {
+    try {
+      await Share.share({
+        message: `${event.title} etkinliğine Paltivity'den katıl!\n\npaltivity://event/${id}`,
+        title: event.title,
+      })
+    } catch {
+      // Kullanıcı iptal etti veya paylaşım desteklenmiyor
+    }
+  }
   const isEnded = event.status !== 'active' ||
     new Date(event.starts_at).getTime() < Date.now() - 3 * 60 * 60 * 1000
   const formattedDate = new Date(event.starts_at).toLocaleDateString('tr-TR', {
@@ -677,11 +688,16 @@ export default function EventDetailScreen() {
             <Ionicons name="chevron-back" size={20} color={colors.accent} />
             <Text style={styles.backText}>Geri</Text>
           </TouchableOpacity>
-          {isCreator && !isEnded && (
-            <TouchableOpacity style={styles.editBtn} onPress={() => router.push(`/event/edit/${id}`)}>
-              <Ionicons name="pencil-outline" size={16} color={colors.textSecondary} />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity style={styles.editBtn} onPress={handleShare}>
+              <Ionicons name="share-outline" size={16} color={colors.textSecondary} />
             </TouchableOpacity>
-          )}
+            {isCreator && !isEnded && (
+              <TouchableOpacity style={styles.editBtn} onPress={() => router.push(`/event/edit/${id}`)}>
+                <Ionicons name="pencil-outline" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         <Text style={styles.title}>{event.title}</Text>
