@@ -84,6 +84,13 @@ function createStyles(c: ColorTheme) {
       borderWidth: 1, borderColor: c.accentSecondary + '40',
     },
     creatorText: { color: c.accentSecondary, fontWeight: '600', fontSize: 15 },
+    deleteEventBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      gap: 8, borderRadius: 14, padding: 16, marginTop: 10,
+      borderWidth: 1, borderColor: c.error + '50',
+      backgroundColor: c.error + '08',
+    },
+    deleteEventText: { color: c.error, fontWeight: '600', fontSize: 15 },
     chatBtn: {
       flexDirection: 'row', alignItems: 'center', gap: 10,
       backgroundColor: c.accent + '12',
@@ -523,6 +530,32 @@ export default function EventDetailScreen() {
   const isCreator = event.creator_id === user?.id
   const isFull = event.max_attendees !== null && event.attendee_count >= event.max_attendees
 
+  const handleDeleteEvent = () => {
+    Alert.alert(
+      'Etkinliği Sil',
+      `"${event.title}" etkinliğini silmek istediğine emin misin? Tüm katılımcılara bildirim gönderilecek.`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Sil',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase.rpc('delete_event', {
+                p_event_id: id,
+                p_user_id: user?.id,
+              })
+              if (error) throw error
+              router.back()
+            } catch (e: any) {
+              Alert.alert('Hata', toTurkishError(e?.message))
+            }
+          },
+        },
+      ]
+    )
+  }
+
   const handleShare = async () => {
     try {
       await Share.share({
@@ -780,10 +813,16 @@ export default function EventDetailScreen() {
               </TouchableOpacity>
             )}
             {isCreator ? (
-              <View style={styles.creatorBadge}>
-                <Ionicons name="checkmark-circle" size={18} color={colors.accentSecondary} />
-                <Text style={styles.creatorText}>Bu eventi sen oluşturdun</Text>
-              </View>
+              <>
+                <View style={styles.creatorBadge}>
+                  <Ionicons name="checkmark-circle" size={18} color={colors.accentSecondary} />
+                  <Text style={styles.creatorText}>Bu eventi sen oluşturdun</Text>
+                </View>
+                <TouchableOpacity style={styles.deleteEventBtn} onPress={handleDeleteEvent} activeOpacity={0.8}>
+                  <Ionicons name="trash-outline" size={16} color={colors.error} />
+                  <Text style={styles.deleteEventText}>Etkinliği Sil</Text>
+                </TouchableOpacity>
+              </>
             ) : (
               <View style={styles.joinWrapper}>
                 {particles.map((p, i) => (
