@@ -165,6 +165,7 @@ export default function RegisterScreen() {
 
   const handleRegister = async () => {
     if (!email || !password || !username || !fullName) return Alert.alert('Hata', 'Tüm zorunlu alanları doldur')
+    if (/\s/.test(username)) return Alert.alert('Hata', 'Kullanıcı adı boşluk içeremez.')
     if (password.length < 8) return Alert.alert('Hata', 'Şifre en az 8 karakter olmalı')
     setLoading(true)
     try {
