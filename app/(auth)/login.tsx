@@ -109,9 +109,23 @@ export default function LoginScreen() {
     if (!email || !password) return Alert.alert('Hata', 'Tüm alanları doldur')
     setLoading(true)
     try {
-      await signIn(email, password)
+      let loginEmail = email.trim()
+
+      // Username ile giriş: @ yoksa kullanıcı adı olarak ara
+      if (!loginEmail.includes('@')) {
+        const { data: resolvedEmail, error: rpcError } = await supabase
+          .rpc('get_email_by_username', { p_username: loginEmail })
+        if (rpcError || !resolvedEmail) {
+          throw new Error('Kullanıcı adı bulunamadı.')
+        }
+        loginEmail = resolvedEmail
+      }
+
+      await signIn(loginEmail, password)
     } catch (err: any) {
-      Alert.alert('Giriş hatası', toTurkishError(err.message))
+      const msg = err?.message ?? ''
+      const translated = toTurkishError(msg)
+      Alert.alert('Giriş hatası', translated === 'Bir hata oluştu. Tekrar dene.' ? msg : translated)
     } finally {
       setLoading(false)
     }
@@ -141,19 +155,28 @@ export default function LoginScreen() {
   }
 
   const handleForgotPassword = async () => {
-    const target = email.trim()
-    if (!target) {
-      Alert.alert('Şifremi Unuttum', 'Önce email adresini gir, sonra tekrar dene.')
+    const input = email.trim()
+    if (!input) {
+      Alert.alert('Şifremi Unuttum', 'Önce email veya kullanıcı adını gir, sonra tekrar dene.')
       return
     }
     try {
+      let target = input
+      if (!target.includes('@')) {
+        const { data: resolvedEmail, error: rpcError } = await supabase
+          .rpc('get_email_by_username', { p_username: target })
+        if (rpcError || !resolvedEmail) throw new Error('Kullanıcı adı bulunamadı.')
+        target = resolvedEmail
+      }
       const { error } = await supabase.auth.resetPasswordForEmail(target, {
         redirectTo: 'paltivity://reset-password',
       })
       if (error) throw error
-      Alert.alert('Mail gönderildi', `${target} adresine şifre sıfırlama bağlantısı gönderdik.`)
+      Alert.alert('Mail gönderildi', 'Şifre sıfırlama bağlantısı e-posta adresine gönderildi.')
     } catch (e: any) {
-      Alert.alert('Hata', toTurkishError(e?.message))
+      const msg = e?.message ?? ''
+      const translated = toTurkishError(msg)
+      Alert.alert('Hata', translated === 'Bir hata oluştu. Tekrar dene.' ? msg : translated)
     }
   }
 
@@ -181,14 +204,15 @@ export default function LoginScreen() {
             <Text style={[styles.cardSub, { fontFamily: f400 }]}>Devam etmek için giriş yap</Text>
 
             <View style={styles.inputRow}>
-              <Ionicons name="mail-outline" size={18} color={C.muted} style={styles.inputIcon} />
+              <Ionicons name="person-outline" size={18} color={C.muted} style={styles.inputIcon} />
               <TextInput
                 style={[styles.input, { fontFamily: f400 }]}
-                placeholder="Email adresin"
+                placeholder="Email veya kullanıcı adı"
                 placeholderTextColor={C.muted}
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
+                autoCorrect={false}
                 keyboardType="email-address"
               />
             </View>
