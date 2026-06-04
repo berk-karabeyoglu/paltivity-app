@@ -170,7 +170,11 @@ export default function RegisterScreen() {
     try {
       await signUp(email, password, username, fullName, gender)
     } catch (err: any) {
-      Alert.alert('Kayıt hatası', toTurkishError(err.message))
+      const msg = err?.message ?? ''
+      const translated = toTurkishError(msg)
+      // toTurkishError generic fallback verirse orijinal mesajı göster
+      const display = translated === 'Bir hata oluştu. Tekrar dene.' ? msg : translated
+      Alert.alert('Kayıt hatası', display || 'Bir hata oluştu. Tekrar dene.')
     } finally {
       setLoading(false)
     }
