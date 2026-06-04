@@ -42,7 +42,15 @@
       "expo-router",
       "expo-font",
       "@react-native-community/datetimepicker",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#396afc",
+          "sounds": []
+        }
+      ]
     ],
     "extra": {
       "router": {},

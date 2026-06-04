@@ -13,6 +13,7 @@ import { UnreadContext } from '../lib/hooks/useUnreadNotifications'
 import ToastNotification from '../components/ui/ToastNotification'
 import * as NavigationBar from 'expo-navigation-bar'
 import { emitJoinRequest, emitJoinApproved, emitJoinRejected, emitAttendeeJoined, emitAttendeeLeft } from '../lib/joinRequestSignal'
+import { usePushNotifications } from '../lib/hooks/usePushNotifications'
 
 type Toast = { title: string; body: string; type?: string; eventId?: string } | null
 
@@ -21,6 +22,8 @@ function RootLayoutInner() {
   const { session, loading } = useAuth()
   const colors = useColors()
   const { theme } = useTheme()
+  usePushNotifications(session?.user?.id)
+
   const [unreadCount, setUnreadCount] = useState(0)
   const [toast, setToast] = useState<Toast>(null)
   const [onboardingReady, setOnboardingReady] = useState(false)
