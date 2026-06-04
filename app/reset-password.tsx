@@ -133,7 +133,7 @@ export default function ResetPasswordScreen() {
       >
         <View style={styles.header}>
           <View style={styles.backBtn}>
-            <Ionicons name="lock-reset" size={18} color={colors.accent} />
+            <Ionicons name="lock-open-outline" size={18} color={colors.accent} />
           </View>
           <Text style={styles.title}>Yeni Şifre Belirle</Text>
         </View>
